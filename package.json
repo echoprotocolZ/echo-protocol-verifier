@@ -2,6 +2,14 @@
   "dependencies": {
     "circom2": "^0.2.23",
     "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
     "snarkjs": "^0.7.6"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "chai": "^6.3.0",
+    "ethers": "^6.13.4",
+    "hardhat": "^2.22.19",
+    "solc": "^0.8.24"
   }
 }

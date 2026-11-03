@@ -7,3 +7,18 @@ build/
 *.wtns
 *.zkey
 *.ptau
+
+# Hardhat generated files
+artifacts/
+cache/
+coverage/
+typechain-types/
+
+# Secrets and private configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.secret
+*.keystore

@@ -1,0 +1,249 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "./IPolicyRegistry.sol";
+
+contract PolicyRegistry is IPolicyRegistry {
+    mapping(address => mapping(address => Policy)) public policies;
+
+    mapping(address => mapping(address => mapping(address => TokenPolicy)))
+        public tokenPolicies;
+
+    mapping(address => mapping(address => mapping(address => TargetPolicy)))
+        public targetPolicies;
+
+    mapping(address => mapping(address => mapping(address => mapping(bytes4 => bool))))
+        private selectorPolicies;
+
+    mapping(address => mapping(address => mapping(address => mapping(bytes4 => bool))))
+        private selectorConfigured;
+
+    mapping(address => mapping(address => mapping(uint256 => uint256)))
+        public dailyNativeSpent;
+
+    mapping(address => mapping(address => mapping(address => mapping(uint256 => uint256))))
+        public dailyTokenSpent;
+
+    // A new generation invalidates permissions from prior delegations.
+    mapping(address => mapping(address => uint256)) public policyGeneration;
+
+    mapping(address => mapping(address => mapping(address => uint256)))
+        private targetPermissionGeneration;
+
+    mapping(address => mapping(address => mapping(address => mapping(bytes4 => uint256))))
+        private selectorPermissionGeneration;
+
+    error UnauthorizedAccount();
+    error UnauthorizedDelegatee();
+    error UnauthorizedAdmin();
+    error PolicyExpired();
+    error InvalidPolicy();
+    error InvalidTarget();
+    error InvalidSelector();
+    error TargetNotAllowed();
+    error SelectorNotAllowed();
+    error TokenNotAllowed();
+    error TxLimitExceeded();
+    error DailyLimitExceeded();
+    error InvalidTokenCall();
+
+    modifier onlyAccount(address account) {
+        if (msg.sender != account) revert UnauthorizedAccount();
+        _;
+    }
+
+    modifier onlyPolicyAdmin(address account, address delegatee) {
+        address admin = policies[account][delegatee].admin;
+
+        if (msg.sender != account && msg.sender != admin) {
+            revert UnauthorizedAdmin();
+        }
+        _;
+    }
+
+    function setPolicy(
+        address delegatee,
+        Policy calldata policy
+    ) external override {
+        if (
+            delegatee == address(0) ||
+            policy.admin == address(0) ||
+            policy.expiryTimestamp <= block.timestamp
+        ) revert InvalidPolicy();
+
+        policies[msg.sender][delegatee] = policy;
+
+        emit PolicyUpdated(msg.sender, delegatee);
+    }
+
+    function setTokenPolicy(
+        address delegatee,
+        address token,
+        TokenPolicy calldata tokenPolicy
+    ) external override onlyPolicyAdmin(msg.sender, delegatee) {
+        if (token == address(0)) revert InvalidTarget();
+
+        tokenPolicies[msg.sender][delegatee][token] = tokenPolicy;
+
+        emit TokenPolicyUpdated(msg.sender, delegatee, token);
+    }
+
+    function setTargetPolicy(
+        address delegatee,
+        address target,
+        bool isAllowed
+    ) external override onlyPolicyAdmin(msg.sender, delegatee) {
+        if (target == address(0)) revert InvalidTarget();
+
+        targetPermissionGeneration[msg.sender][delegatee][target] =
+            policyGeneration[msg.sender][delegatee];
+
+        targetPolicies[msg.sender][delegatee][target] =
+            TargetPolicy({isAllowed: isAllowed});
+
+        emit TargetPolicyUpdated(
+            msg.sender,
+            delegatee,
+            target,
+            isAllowed
+        );
+    }
+
+    function setSelectorPolicy(
+        address delegatee,
+        address target,
+        bytes4 selector,
+        bool isAllowed
+    ) external override onlyPolicyAdmin(msg.sender, delegatee) {
+        if (target == address(0) || selector == bytes4(0)) {
+            revert InvalidSelector();
+        }
+
+        selectorPermissionGeneration[msg.sender][delegatee][target][selector] =
+            policyGeneration[msg.sender][delegatee];
+
+        selectorConfigured[msg.sender][delegatee][target][selector] = true;
+        selectorPolicies[msg.sender][delegatee][target][selector] = isAllowed;
+
+        emit SelectorPolicyUpdated(
+            msg.sender,
+            delegatee,
+            target,
+            selector,
+            isAllowed
+        );
+    }
+
+    function isSelectorAllowed(
+        address account,
+        address delegatee,
+        address target,
+        bytes4 selector
+    ) external view override returns (bool) {
+        return
+            policies[account][delegatee].isAllowed &&
+            targetPolicies[account][delegatee][target].isAllowed &&
+            targetPermissionGeneration[account][delegatee][target] ==
+                policyGeneration[account][delegatee] &&
+            selectorConfigured[account][delegatee][target][selector] &&
+            selectorPolicies[account][delegatee][target][selector] &&
+            selectorPermissionGeneration[account][delegatee][target][selector] ==
+                policyGeneration[account][delegatee];
+    }
+
+    function revokePolicy(
+        address delegatee
+    ) external override onlyPolicyAdmin(msg.sender, delegatee) {
+        delete policies[msg.sender][delegatee];
+        policyGeneration[msg.sender][delegatee] += 1;
+
+        emit PolicyRevoked(msg.sender, delegatee);
+    }
+
+    function validateExecution(
+        address account,
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) external override returns (bool) {
+        // Only the account itself may invoke policy validation.
+        if (msg.sender != account) revert UnauthorizedAccount();
+
+        Policy memory policy = policies[account][delegatee];
+
+        if (!policy.isAllowed) revert UnauthorizedDelegatee();
+        if (block.timestamp > policy.expiryTimestamp) {
+            revert PolicyExpired();
+        }
+
+        if (
+            !targetPolicies[account][delegatee][target].isAllowed ||
+            targetPermissionGeneration[account][delegatee][target] !=
+                policyGeneration[account][delegatee]
+        ) {
+            revert TargetNotAllowed();
+        }
+
+        if (data.length < 4) revert InvalidSelector();
+
+        bytes4 selector = bytes4(data[:4]);
+
+        if (
+            !selectorConfigured[account][delegatee][target][selector] ||
+            !selectorPolicies[account][delegatee][target][selector] ||
+            selectorPermissionGeneration[account][delegatee][target][selector] !=
+                policyGeneration[account][delegatee]
+        ) revert SelectorNotAllowed();
+
+        uint256 currentDay = block.timestamp / 1 days;
+
+        // Native currency limits.
+        if (value > 0) {
+            if (value > policy.maxNativeSpendPerTx) {
+                revert TxLimitExceeded();
+            }
+
+            uint256 spent = dailyNativeSpent[account][delegatee][currentDay];
+
+            if (spent + value > policy.dailyNativeSpendLimit) {
+                revert DailyLimitExceeded();
+            }
+
+            dailyNativeSpent[account][delegatee][currentDay] =
+                spent + value;
+        }
+
+        // ERC-20 transfer(address,uint256).
+        if (selector == 0xa9059cbb) {
+            if (data.length != 68) revert InvalidTokenCall();
+
+            TokenPolicy memory tokenPolicy =
+                tokenPolicies[account][delegatee][target];
+
+            if (!tokenPolicy.isAllowed) revert TokenNotAllowed();
+
+            uint256 amount;
+            assembly {
+                amount := calldataload(add(data.offset, 36))
+            }
+
+            if (amount > tokenPolicy.maxSpendPerTx) {
+                revert TxLimitExceeded();
+            }
+
+            uint256 spentToken =
+                dailyTokenSpent[account][delegatee][target][currentDay];
+
+            if (spentToken + amount > tokenPolicy.dailySpendLimit) {
+                revert DailyLimitExceeded();
+            }
+
+            dailyTokenSpent[account][delegatee][target][currentDay] =
+                spentToken + amount;
+        }
+
+        return true;
+    }
+}
+
