@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 /// @title EchoAttestationRegistryV3
 /// @notice Foundation for authenticated checkpoint attestations.
 /// @dev Signature verification and authorization are not yet implemented.
-contract EchoAttestationRegistryV3 {
+contract EchoAttestationRegistryV3 is EIP712 {
+
+    constructor() EIP712("EchoAttestationRegistryV3", "1") {}
 
     enum AttestationTier {
         ValidatorOnly,
