@@ -89,6 +89,35 @@ contract EchoAttestationRegistryV3 is EIP712 {
     }
 
 
+    // Each account controls which bridge contracts it trusts.
+    mapping(address => mapping(address => bool))
+        public authorizedCheckpointBridges;
+
+    event CheckpointBridgeUpdated(
+        address indexed account,
+        address indexed bridge,
+        bool authorized
+    );
+
+    error InvalidCheckpointBridge();
+
+    function setCheckpointBridge(
+        address bridge,
+        bool authorized
+    ) external {
+        if (bridge == address(0) || bridge.code.length == 0) {
+            revert InvalidCheckpointBridge();
+        }
+
+        authorizedCheckpointBridges[msg.sender][bridge] = authorized;
+
+        emit CheckpointBridgeUpdated(
+            msg.sender,
+            bridge,
+            authorized
+        );
+    }
+
     // Records checkpoint digests that have already been consumed.
     mapping(bytes32 => bool) public consumedCheckpoints;
 
@@ -136,6 +165,49 @@ contract EchoAttestationRegistryV3 is EIP712 {
         ) {
             revert CheckpointAlreadyConsumed();
         }
+
+        address signer = ECDSA.recover(digest, signature);
+
+        if (!trustedValidatorSigners[checkpoint.account][signer]) {
+            revert UntrustedCheckpointSigner();
+        }
+
+        consumedCheckpoints[digest] = true;
+        consumedCheckpointNonces[checkpoint.account]
+            [checkpoint.delegatee][checkpoint.nonce] = true;
+
+        emit CheckpointConsumed(
+            checkpoint.account,
+            checkpoint.delegatee,
+            digest
+        );
+    }
+
+
+    /// @notice Consumes a checkpoint through an account-approved bridge.
+    /// @dev The approved bridge must independently verify the ZK proof.
+    function consumeCheckpointFromBridge(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature
+    ) external returns (bytes32 digest) {
+        if (
+            !authorizedCheckpointBridges[checkpoint.account][msg.sender] ||
+            msg.sender.code.length == 0
+        ) revert UnauthorizedCheckpointConsumer();
+
+        AttestationTier tier = validateCheckpointPolicy(checkpoint);
+
+        if (tier != AttestationTier.ValidatorOnly) {
+            revert UnsupportedAttestationTier();
+        }
+
+        digest = checkpointDigest(checkpoint);
+
+        if (
+            consumedCheckpoints[digest] ||
+            consumedCheckpointNonces[checkpoint.account]
+                [checkpoint.delegatee][checkpoint.nonce]
+        ) revert CheckpointAlreadyConsumed();
 
         address signer = ECDSA.recover(digest, signature);
 
