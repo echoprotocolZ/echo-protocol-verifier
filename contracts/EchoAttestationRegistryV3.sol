@@ -88,6 +88,58 @@ contract EchoAttestationRegistryV3 is EIP712 {
         return policy.requiredTier;
     }
 
+
+    // Records checkpoint digests that have already been consumed.
+    mapping(bytes32 => bool) public consumedCheckpoints;
+
+    event CheckpointConsumed(
+        address indexed account,
+        address indexed delegatee,
+        bytes32 indexed digest
+    );
+
+    error CheckpointAlreadyConsumed();
+
+
+    error UnauthorizedCheckpointConsumer();
+    error UnsupportedAttestationTier();
+
+    function consumeCheckpoint(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature
+    ) external returns (bytes32 digest) {
+        if (msg.sender != checkpoint.account) {
+            revert UnauthorizedCheckpointConsumer();
+        }
+
+        AttestationTier tier = validateCheckpointPolicy(checkpoint);
+
+        // Other tiers remain disabled until fully implemented.
+        if (tier != AttestationTier.ValidatorOnly) {
+            revert UnsupportedAttestationTier();
+        }
+
+        digest = checkpointDigest(checkpoint);
+
+        if (consumedCheckpoints[digest]) {
+            revert CheckpointAlreadyConsumed();
+        }
+
+        address signer = ECDSA.recover(digest, signature);
+
+        if (!trustedValidatorSigners[checkpoint.account][signer]) {
+            revert UntrustedCheckpointSigner();
+        }
+
+        consumedCheckpoints[digest] = true;
+
+        emit CheckpointConsumed(
+            checkpoint.account,
+            checkpoint.delegatee,
+            digest
+        );
+    }
+
     function checkpointDigest(
         SignedCheckpoint calldata checkpoint
     ) public view returns (bytes32) {
