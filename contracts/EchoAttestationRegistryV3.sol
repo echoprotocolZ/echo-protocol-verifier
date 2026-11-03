@@ -11,6 +11,40 @@ contract EchoAttestationRegistryV3 is EIP712 {
 
     constructor() EIP712("EchoAttestationRegistryV3", "1") {}
 
+    struct SignedCheckpoint {
+        address account;
+        address delegatee;
+        bytes32 zoneHash;
+        bytes32 checkpointCommitment;
+        bytes32 authorizationCommitment;
+        uint64 timestamp;
+        uint256 nonce;
+    }
+
+    bytes32 public constant CHECKPOINT_TYPEHASH = keccak256(
+        "SignedCheckpoint(address account,address delegatee,bytes32 zoneHash,bytes32 checkpointCommitment,bytes32 authorizationCommitment,uint64 timestamp,uint256 nonce)"
+    );
+
+    function checkpointDigest(
+        SignedCheckpoint calldata checkpoint
+    ) public view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                CHECKPOINT_TYPEHASH,
+                checkpoint.account,
+                checkpoint.delegatee,
+                checkpoint.zoneHash,
+                checkpoint.checkpointCommitment,
+                checkpoint.authorizationCommitment,
+                checkpoint.timestamp,
+                checkpoint.nonce
+            )
+        );
+
+        return _hashTypedDataV4(structHash);
+    }
+
+
     enum AttestationTier {
         ValidatorOnly,
         HybridPreferred,
