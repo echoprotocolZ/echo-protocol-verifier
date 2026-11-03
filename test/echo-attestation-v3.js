@@ -112,3 +112,73 @@ describe("Echo V3 Attestation Policy Security", function () {
     );
   });
 });
+
+describe("Echo V3 Trusted Signer Security", function () {
+  let registry, account, outsider, validator, hardware;
+
+  beforeEach(async function () {
+    [account, outsider, validator, hardware] = await ethers.getSigners();
+
+    const Registry = await ethers.getContractFactory(
+      "EchoAttestationRegistryV3"
+    );
+
+    registry = await Registry.deploy();
+    await registry.waitForDeployment();
+  });
+
+  it("allows an account to register validator and hardware signers", async function () {
+    await registry.connect(account).setValidatorSigner(validator.address, true);
+    await registry.connect(account).setHardwareSigner(hardware.address, true);
+
+    expect(
+      await registry.trustedValidatorSigners(account.address, validator.address)
+    ).to.equal(true);
+
+    expect(
+      await registry.trustedHardwareSigners(account.address, hardware.address)
+    ).to.equal(true);
+  });
+
+  it("isolates trusted signer registrations between accounts", async function () {
+    await registry.connect(outsider).setValidatorSigner(validator.address, true);
+
+    expect(
+      await registry.trustedValidatorSigners(account.address, validator.address)
+    ).to.equal(false);
+
+    expect(
+      await registry.trustedValidatorSigners(outsider.address, validator.address)
+    ).to.equal(true);
+  });
+
+  it("allows an account to revoke trusted signers", async function () {
+    await registry.connect(account).setValidatorSigner(validator.address, true);
+    await registry.connect(account).setHardwareSigner(hardware.address, true);
+
+    await registry.connect(account).setValidatorSigner(validator.address, false);
+    await registry.connect(account).setHardwareSigner(hardware.address, false);
+
+    expect(
+      await registry.trustedValidatorSigners(account.address, validator.address)
+    ).to.equal(false);
+
+    expect(
+      await registry.trustedHardwareSigners(account.address, hardware.address)
+    ).to.equal(false);
+  });
+
+  it("rejects zero-address signer registration", async function () {
+    for (const method of ["setValidatorSigner", "setHardwareSigner"]) {
+      let rejected = false;
+
+      try {
+        await registry.connect(account)[method](ethers.ZeroAddress, true);
+      } catch (error) {
+        rejected = error.message.includes("InvalidSigner");
+      }
+
+      expect(rejected).to.equal(true);
+    }
+  });
+});
