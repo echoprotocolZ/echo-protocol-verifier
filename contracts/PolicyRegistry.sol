@@ -88,6 +88,42 @@ contract PolicyRegistry is IPolicyRegistry {
         emit TokenPolicyUpdated(msg.sender, delegatee, token);
     }
 
+    // Account-scoped target administration.
+    // Only the account or its designated policy admin may call.
+    function setTargetPolicyFor(
+        address account,
+        address delegatee,
+        address target,
+        bool isAllowed
+    ) external {
+        if (account == address(0) || target == address(0)) {
+            revert InvalidTarget();
+        }
+
+        Policy storage policy = policies[account][delegatee];
+
+        if (!policy.isAllowed || block.timestamp > policy.expiryTimestamp) {
+            revert InvalidPolicy();
+        }
+
+        if (msg.sender != account && msg.sender != policy.admin) {
+            revert UnauthorizedAdmin();
+        }
+
+        targetPermissionGeneration[account][delegatee][target] =
+            policyGeneration[account][delegatee];
+
+        targetPolicies[account][delegatee][target] =
+            TargetPolicy({isAllowed: isAllowed});
+
+        emit TargetPolicyUpdated(
+            account,
+            delegatee,
+            target,
+            isAllowed
+        );
+    }
+
     function setTargetPolicy(
         address delegatee,
         address target,
