@@ -175,3 +175,100 @@ describe("Echo V3 checkpoint consumption", function () {
     );
   });
 });
+
+describe("Echo V3 nonce uniqueness", function () {
+  it("rejects a different checkpoint using an already-consumed nonce", async function () {
+    const [account, delegatee, validator] = await ethers.getSigners();
+
+    const Factory = await ethers.getContractFactory(
+      "EchoAttestationRegistryV3"
+    );
+    const registry = await Factory.deploy();
+    await registry.waitForDeployment();
+
+    const block = await ethers.provider.getBlock("latest");
+    const zone = ethers.id("nonce-test-zone");
+
+    await registry.connect(account).setAttestationPolicy(
+      delegatee.address,
+      {
+        allowedZoneHash: zone,
+        maxTimeDrift: 300,
+        requiredTier: 0,
+        allowValidatorFallback: false,
+        enabled: true
+      }
+    );
+
+    await registry.connect(account).setValidatorSigner(
+      validator.address, true
+    );
+
+    const checkpoint = {
+      account: account.address,
+      delegatee: delegatee.address,
+      zoneHash: zone,
+      checkpointCommitment: ethers.id("checkpoint-one"),
+      authorizationCommitment: ethers.id("authorization-one"),
+      timestamp: BigInt(block.timestamp),
+      nonce: 42n
+    };
+
+    const network = await ethers.provider.getNetwork();
+    const domain = {
+      name: "EchoAttestationRegistryV3",
+      version: "1",
+      chainId: network.chainId,
+      verifyingContract: await registry.getAddress()
+    };
+
+    const types = {
+      SignedCheckpoint: [
+        { name: "account", type: "address" },
+        { name: "delegatee", type: "address" },
+        { name: "zoneHash", type: "bytes32" },
+        { name: "checkpointCommitment", type: "bytes32" },
+        { name: "authorizationCommitment", type: "bytes32" },
+        { name: "timestamp", type: "uint64" },
+        { name: "nonce", type: "uint256" }
+      ]
+    };
+
+    const signature1 = await validator.signTypedData(
+      domain, types, checkpoint
+    );
+
+    await (
+      await registry.connect(account).consumeCheckpoint(
+        checkpoint, signature1
+      )
+    ).wait();
+
+    expect(
+      await registry.consumedCheckpointNonces(
+        account.address, delegatee.address, 42n
+      )
+    ).to.equal(true);
+
+    const changed = {
+      ...checkpoint,
+      checkpointCommitment: ethers.id("checkpoint-two"),
+      authorizationCommitment: ethers.id("authorization-two")
+    };
+
+    const signature2 = await validator.signTypedData(
+      domain, types, changed
+    );
+
+    let rejected = false;
+    try {
+      await registry.connect(account).consumeCheckpoint(
+        changed, signature2
+      );
+    } catch (error) {
+      rejected = error.message.includes("CheckpointAlreadyConsumed");
+    }
+
+    expect(rejected).to.equal(true);
+  });
+});

@@ -92,6 +92,11 @@ contract EchoAttestationRegistryV3 is EIP712 {
     // Records checkpoint digests that have already been consumed.
     mapping(bytes32 => bool) public consumedCheckpoints;
 
+    // A nonce can be consumed only once per account and delegatee.
+    mapping(address => mapping(address => mapping(uint256 => bool)))
+        public consumedCheckpointNonces;
+
+
     event CheckpointConsumed(
         address indexed account,
         address indexed delegatee,
@@ -125,6 +130,13 @@ contract EchoAttestationRegistryV3 is EIP712 {
             revert CheckpointAlreadyConsumed();
         }
 
+        if (
+            consumedCheckpointNonces[checkpoint.account]
+                [checkpoint.delegatee][checkpoint.nonce]
+        ) {
+            revert CheckpointAlreadyConsumed();
+        }
+
         address signer = ECDSA.recover(digest, signature);
 
         if (!trustedValidatorSigners[checkpoint.account][signer]) {
@@ -132,6 +144,8 @@ contract EchoAttestationRegistryV3 is EIP712 {
         }
 
         consumedCheckpoints[digest] = true;
+        consumedCheckpointNonces[checkpoint.account]
+            [checkpoint.delegatee][checkpoint.nonce] = true;
 
         emit CheckpointConsumed(
             checkpoint.account,
