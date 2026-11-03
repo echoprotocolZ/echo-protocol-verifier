@@ -56,6 +56,38 @@ contract EchoAttestationRegistryV3 is EIP712 {
         }
     }
 
+
+    error AttestationPolicyDisabled();
+    error CheckpointZoneMismatch();
+    error CheckpointTimestampInvalid();
+
+    function validateCheckpointPolicy(
+        SignedCheckpoint calldata checkpoint
+    ) public view returns (AttestationTier requiredTier) {
+        AttestationPolicy memory policy =
+            attestationPolicies[checkpoint.account][checkpoint.delegatee];
+
+        if (!policy.enabled) {
+            revert AttestationPolicyDisabled();
+        }
+
+        if (checkpoint.zoneHash != policy.allowedZoneHash) {
+            revert CheckpointZoneMismatch();
+        }
+
+        uint256 timestamp = uint256(checkpoint.timestamp);
+        uint256 drift = uint256(policy.maxTimeDrift);
+
+        if (
+            timestamp > block.timestamp ||
+            block.timestamp - timestamp > drift
+        ) {
+            revert CheckpointTimestampInvalid();
+        }
+
+        return policy.requiredTier;
+    }
+
     function checkpointDigest(
         SignedCheckpoint calldata checkpoint
     ) public view returns (bytes32) {
