@@ -61,6 +61,11 @@ contract PolicyRegistry is IPolicyRegistry {
         _;
     }
 
+
+    // Tracks the delegation generation for each token approval.
+    mapping(address => mapping(address => mapping(address => uint256)))
+        public tokenPermissionGeneration;
+
     function setPolicy(
         address delegatee,
         Policy calldata policy
@@ -71,9 +76,41 @@ contract PolicyRegistry is IPolicyRegistry {
             policy.expiryTimestamp <= block.timestamp
         ) revert InvalidPolicy();
 
+        // Invalidate permissions from any previous policy generation.
+        policyGeneration[msg.sender][delegatee] += 1;
+
         policies[msg.sender][delegatee] = policy;
 
         emit PolicyUpdated(msg.sender, delegatee);
+    }
+
+    // Account-scoped token policy administration.
+    function setTokenPolicyFor(
+        address account,
+        address delegatee,
+        address token,
+        TokenPolicy calldata tokenPolicy
+    ) external {
+        if (account == address(0) || token == address(0)) {
+            revert InvalidTarget();
+        }
+
+        Policy storage policy = policies[account][delegatee];
+
+        if (!policy.isAllowed || block.timestamp > policy.expiryTimestamp) {
+            revert InvalidPolicy();
+        }
+
+        if (msg.sender != account && msg.sender != policy.admin) {
+            revert UnauthorizedAdmin();
+        }
+
+        tokenPermissionGeneration[account][delegatee][token] =
+            policyGeneration[account][delegatee];
+
+        tokenPolicies[account][delegatee][token] = tokenPolicy;
+
+        emit TokenPolicyUpdated(account, delegatee, token);
     }
 
     function setTokenPolicy(
@@ -82,6 +119,9 @@ contract PolicyRegistry is IPolicyRegistry {
         TokenPolicy calldata tokenPolicy
     ) external override onlyPolicyAdmin(msg.sender, delegatee) {
         if (token == address(0)) revert InvalidTarget();
+
+        tokenPermissionGeneration[msg.sender][delegatee][token] =
+            policyGeneration[msg.sender][delegatee];
 
         tokenPolicies[msg.sender][delegatee][token] = tokenPolicy;
 
@@ -145,6 +185,47 @@ contract PolicyRegistry is IPolicyRegistry {
         );
     }
 
+    // Account-scoped selector administration.
+    function setSelectorPolicyFor(
+        address account,
+        address delegatee,
+        address target,
+        bytes4 selector,
+        bool isAllowed
+    ) external {
+        if (
+            account == address(0) ||
+            target == address(0) ||
+            selector == bytes4(0)
+        ) {
+            revert InvalidSelector();
+        }
+
+        Policy storage policy = policies[account][delegatee];
+
+        if (!policy.isAllowed || block.timestamp > policy.expiryTimestamp) {
+            revert InvalidPolicy();
+        }
+
+        if (msg.sender != account && msg.sender != policy.admin) {
+            revert UnauthorizedAdmin();
+        }
+
+        selectorPermissionGeneration[account][delegatee][target][selector] =
+            policyGeneration[account][delegatee];
+
+        selectorConfigured[account][delegatee][target][selector] = true;
+        selectorPolicies[account][delegatee][target][selector] = isAllowed;
+
+        emit SelectorPolicyUpdated(
+            account,
+            delegatee,
+            target,
+            selector,
+            isAllowed
+        );
+    }
+
     function setSelectorPolicy(
         address delegatee,
         address target,
@@ -185,6 +266,29 @@ contract PolicyRegistry is IPolicyRegistry {
             selectorPolicies[account][delegatee][target][selector] &&
             selectorPermissionGeneration[account][delegatee][target][selector] ==
                 policyGeneration[account][delegatee];
+    }
+
+    // Account-scoped delegation revocation.
+    function revokePolicyFor(
+        address account,
+        address delegatee
+    ) external {
+        if (account == address(0) || delegatee == address(0)) {
+            revert InvalidPolicy();
+        }
+
+        Policy storage policy = policies[account][delegatee];
+
+        if (msg.sender != account && msg.sender != policy.admin) {
+            revert UnauthorizedAdmin();
+        }
+
+        delete policies[account][delegatee];
+
+        // Invalidate previously configured target and selector permissions.
+        policyGeneration[account][delegatee] += 1;
+
+        emit PolicyRevoked(account, delegatee);
     }
 
     function revokePolicy(
@@ -232,6 +336,16 @@ contract PolicyRegistry is IPolicyRegistry {
                 policyGeneration[account][delegatee]
         ) revert SelectorNotAllowed();
 
+        // Reject ERC-20 allowance and third-party transfer operations.
+        // These operations are not covered by token spending accounting.
+        if (
+            selector == 0x095ea7b3 || // approve(address,uint256)
+            selector == 0x23b872dd || // transferFrom(address,address,uint256)
+            selector == 0x39509351    // increaseAllowance(address,uint256)
+        ) {
+            revert InvalidTokenCall();
+        }
+
         uint256 currentDay = block.timestamp / 1 days;
 
         // Native currency limits.
@@ -257,7 +371,11 @@ contract PolicyRegistry is IPolicyRegistry {
             TokenPolicy memory tokenPolicy =
                 tokenPolicies[account][delegatee][target];
 
-            if (!tokenPolicy.isAllowed) revert TokenNotAllowed();
+            if (
+            !tokenPolicy.isAllowed ||
+            tokenPermissionGeneration[account][delegatee][target] !=
+                policyGeneration[account][delegatee]
+        ) revert TokenNotAllowed();
 
             uint256 amount;
             assembly {
