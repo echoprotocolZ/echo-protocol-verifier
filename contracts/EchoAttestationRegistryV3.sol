@@ -25,6 +25,37 @@ contract EchoAttestationRegistryV3 is EIP712 {
         "SignedCheckpoint(address account,address delegatee,bytes32 zoneHash,bytes32 checkpointCommitment,bytes32 authorizationCommitment,uint64 timestamp,uint256 nonce)"
     );
 
+
+    enum SignerType {
+        Validator,
+        Hardware
+    }
+
+    error UntrustedCheckpointSigner();
+
+    function verifyCheckpointSigner(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        SignerType signerType
+    ) external view returns (address signer) {
+        signer = ECDSA.recover(
+            checkpointDigest(checkpoint),
+            signature
+        );
+
+        bool trusted;
+
+        if (signerType == SignerType.Validator) {
+            trusted = trustedValidatorSigners[checkpoint.account][signer];
+        } else {
+            trusted = trustedHardwareSigners[checkpoint.account][signer];
+        }
+
+        if (!trusted) {
+            revert UntrustedCheckpointSigner();
+        }
+    }
+
     function checkpointDigest(
         SignedCheckpoint calldata checkpoint
     ) public view returns (bytes32) {
