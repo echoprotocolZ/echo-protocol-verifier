@@ -346,6 +346,166 @@ describe("ECHO V3 real Groth16 authorization integration", function () {
       await ethers.provider.send("evm_revert", [snapshot]);
     }
 
+
+    // Attack 8: Reuse Account A's proof against Account B.
+    const secondAccount = await (
+      await ethers.getContractFactory("EchoSmartAccountV3")
+    ).deploy(
+      owner.address,
+      ethers.ZeroAddress,
+      bridge.target
+    );
+
+    let crossAccountRejected = false;
+
+    try {
+      const tx = await secondAccount.executeAuthorized(
+        ...args
+      );
+      await tx.wait();
+    } catch (error) {
+      crossAccountRejected = true;
+    }
+
+    expect(
+      crossAccountRejected,
+      "Cross-account replay must revert"
+    ).to.equal(true);
+
+    expect(await account.nonce()).to.equal(0n);
+    expect(await secondAccount.nonce()).to.equal(0n);
+    expect(await bridge.consumedNullifiers(nullifier)).to.equal(false);
+    expect(await target.storedValue()).to.equal(0n);
+
+    const replayDigest = await registry.checkpointDigest(checkpoint);
+    expect(
+      await registry.consumedCheckpoints(replayDigest)
+    ).to.equal(false);
+
+    console.log("ATTACK REJECTED: Cross-account replay");
+
+
+    // Attack 9: Attempt authorization using a foreign chain ID.
+    const foreignChainSignals = [...signals];
+    foreignChainSignals[10] = "137";
+
+    const foreignChainArgs = [
+      checkpoint, signature, a, b, c,
+      foreignChainSignals, target.target, 0, data
+    ];
+
+    let crossChainError;
+
+    try {
+      const tx = await account.executeAuthorized(
+        ...foreignChainArgs
+      );
+      await tx.wait();
+    } catch (error) {
+      crossChainError = error;
+    }
+
+    expect(
+      crossChainError,
+      "Cross-chain replay must revert"
+    ).to.exist;
+
+    const invalidChainSelector =
+      bridge.interface.getError("InvalidChain").selector;
+
+    const revertData =
+      crossChainError?.data ??
+      crossChainError?.error?.data ??
+      crossChainError?.info?.error?.data;
+
+    expect(
+      revertData,
+      "Expected InvalidChain revert data"
+    ).to.equal(invalidChainSelector);
+
+    expect(await account.nonce()).to.equal(0n);
+    expect(await bridge.consumedNullifiers(nullifier)).to.equal(false);
+    expect(await target.storedValue()).to.equal(0n);
+
+    const chainReplayDigest =
+      await registry.checkpointDigest(checkpoint);
+
+    expect(
+      await registry.consumedCheckpoints(chainReplayDigest)
+    ).to.equal(false);
+
+    console.log("ATTACK REJECTED: Cross-chain signal replay");
+
+    // Attack 10: Reuse a checkpoint after its validator is revoked.
+    await admin(
+      registry,
+      "setValidatorSigner",
+      [validator.address, false]
+    );
+
+    expect(
+      await registry.trustedValidatorSigners(
+        account.target,
+        validator.address
+      )
+    ).to.equal(false);
+
+    // Confirm the exact registry error, not merely any revert.
+    let revocationError;
+    try {
+      const tx = await account.executeAuthorized(...args);
+      await tx.wait();
+    } catch (error) {
+      revocationError = error;
+    }
+
+    expect(revocationError, "Revocation must revert").to.exist;
+
+    const expectedSelector = registry.interface.getError(
+      "UntrustedCheckpointSigner"
+    ).selector;
+
+    const revocationRevertData =
+      revocationError?.data ??
+      revocationError?.error?.data ??
+      revocationError?.info?.error?.data;
+
+    expect(
+      revocationRevertData,
+      "Expected UntrustedCheckpointSigner error"
+    ).to.equal(expectedSelector);
+
+    expect(await account.nonce()).to.equal(0n);
+    expect(await bridge.consumedNullifiers(nullifier)).to.equal(false);
+    expect(await target.storedValue()).to.equal(0n);
+
+    const revokedDigest =
+      await registry.checkpointDigest(checkpoint);
+
+    expect(
+      await registry.consumedCheckpoints(revokedDigest)
+    ).to.equal(false);
+
+    console.log(
+      "ATTACK REJECTED: Revoked validator authorization"
+    );
+
+    // Restore validator trust for the legitimate execution.
+    await admin(
+      registry,
+      "setValidatorSigner",
+      [validator.address, true]
+    );
+
+    expect(
+      await registry.trustedValidatorSigners(
+        account.target,
+        validator.address
+      )
+    ).to.equal(true);
+
+    console.log("Validator restored for legitimate execution");
+
     await (await account.executeAuthorized(...args)).wait();
 
     expect(await target.storedValue()).to.equal(888n);
