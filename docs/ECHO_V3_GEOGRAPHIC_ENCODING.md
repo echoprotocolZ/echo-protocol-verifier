@@ -108,3 +108,57 @@ Before describing ECHO V3 as production GPS geofencing:
 3. Add adversarial geographic boundary tests.
 4. Complete independent circuit and smart contract audits.
 5. Establish production trusted setup provenance.
+
+## 7. Verified Geographic Domain Finding
+
+Finding ID: ECHO-V3-GEO-001
+Status: Confirmed at the R1CS constraint level
+Classification: Geographic application-policy gap
+Production impact: Requires remediation before GPS geofencing claims
+
+### Reproduction
+
+Using the current timestamp-bound V3 circuit:
+
+- targetX = 1800000001
+- checkpointX = 1800000001
+- targetY = 200000
+- checkpointY = 200000
+- maxDistanceSq = 10000
+
+The checkpoint, authorization, fragment, and nullifier
+commitments were recomputed consistently.
+
+The Circom witness generator produced a witness.
+
+The following command completed successfully:
+
+npx snarkjs wtns check \
+  build/v3-timestamp-fixed/EchoAuthorizationVerifierV3.r1cs \
+  /tmp/echo-v3-invalid-gps.wtns
+
+Result: WITNESS IS CORRECT
+
+### Interpretation
+
+The coordinate value 1800000001 is valid under the
+current 32-bit unsigned circuit constraint.
+
+It exceeds the proposed unsigned latitude encoding
+maximum of 1800000000.
+
+Therefore, the existing circuit does not enforce the
+proposed production latitude domain.
+
+This does not establish a forged checkpoint, invalid
+validator signature acceptance, or authorization bypass.
+
+### Recommended Remediation
+
+1. Finalize the geographic coordinate encoding.
+2. Define the intended distance units and geographic model.
+3. Enforce valid coordinate ranges at the appropriate
+   cryptographic and application trust boundaries.
+4. Add valid, invalid, and boundary-case witness tests.
+5. Re-audit and regenerate cryptographic artifacts if
+   circuit constraints are changed.
