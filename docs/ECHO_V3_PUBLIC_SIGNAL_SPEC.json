@@ -1,0 +1,41 @@
+{
+  "protocol": "ECHO",
+  "version": "V3",
+  "schemaVersion": "1.0",
+  "publicSignalCount": 20,
+  "encoding": "flat uint256[20]",
+  "orderingBasis": "Circuit input declaration order, cross-checked against generated public.json and bridge references",
+  "signals": [
+    {"index":0,"name":"expectedFragmentCommitment","type":"field","invariant":"Poseidon(fragmentPayload, fragmentSalt)"},
+    {"index":1,"name":"expectedAuthorizationCommitment","type":"field","invariant":"Poseidon(authorizationHash1, checkpointCommitment)"},
+    {"index":2,"name":"expectedNullifier","type":"field","invariant":"Poseidon(account, authorizationCommitment)"},
+    {"index":3,"name":"account","type":"address","bits":160,"invariant":"Must equal checkpoint.account"},
+    {"index":4,"name":"delegatee","type":"address","bits":160,"invariant":"Must equal checkpoint.delegatee"},
+    {"index":5,"name":"validator","type":"address","bits":160,"invariant":"Must equal recovered checkpoint signer"},
+    {"index":6,"name":"target","type":"address","bits":160,"invariant":"Must equal execution target"},
+    {"index":7,"name":"value","type":"field","invariant":"Must equal execution value"},
+    {"index":8,"name":"calldataHashLow","type":"uint128","bits":128,"invariant":"Low 128 bits of keccak256(callData)"},
+    {"index":9,"name":"calldataHashHigh","type":"uint128","bits":128,"invariant":"High 128 bits of keccak256(callData)"},
+    {"index":10,"name":"chainId","type":"field","invariant":"Must equal block.chainid"},
+    {"index":11,"name":"nonce","type":"field","invariant":"Must equal checkpoint.nonce and expectedNonce"},
+    {"index":12,"name":"deadline","type":"uint64","bits":64,"invariant":"Must not be expired; checkpoint timestamp must not exceed deadline"},
+    {"index":13,"name":"targetX","type":"uint32","bits":32,"invariant":"Geographic target coordinate"},
+    {"index":14,"name":"targetY","type":"uint32","bits":32,"invariant":"Geographic target coordinate"},
+    {"index":15,"name":"maxDistanceSq","type":"uint64","bits":64,"invariant":"Maximum squared Euclidean distance"},
+    {"index":16,"name":"minTimestamp","type":"uint64","bits":64,"invariant":"Checkpoint timestamp lower bound"},
+    {"index":17,"name":"maxTimestamp","type":"uint64","bits":64,"invariant":"Checkpoint timestamp upper bound"},
+    {"index":18,"name":"expectedCheckpointCommitment","type":"field","invariant":"Must equal checkpoint.checkpointCommitment"},
+    {"index":19,"name":"expectedCheckpointTimestamp","type":"uint64","bits":64,"invariant":"Must equal checkpoint.timestamp"}
+  ],
+  "criticalRules": [
+    "Exactly 20 public signals are required.",
+    "Signals are passed as a flat uint256[20] array.",
+    "Every public signal must be less than the BN254 scalar field modulus.",
+    "Checkpoint timestamp must equal signal 19.",
+    "Checkpoint commitment must equal signal 18.",
+    "Authorization commitment must equal signal 1.",
+    "Nullifier must equal signal 2.",
+    "The bridge must independently validate account, delegatee, validator, target, value, chain ID, nonce and calldata.",
+    "Do not reorder public signals without regenerating and revalidating all cryptographic artifacts."
+  ]
+}
