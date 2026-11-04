@@ -1,15 +1,244 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 /// @title EchoAuthorizationBridgeV4
 /// @notice Development foundation for dual-proof transaction authorization.
 /// @dev The Original Echo Protocol Z.
 ///      No transaction authorization is implemented yet.
+
+/// @notice Read-only dual-proof verification interface.
+/// @dev Proof verification alone does not authorize execution.
+interface IEchoDualProofVerifierForBridgeV4 {
+    struct SignedCheckpoint {
+        address account;
+        address delegatee;
+        bytes32 zoneHash;
+        bytes32 checkpointCommitment;
+        bytes32 authorizationCommitment;
+        uint64 timestamp;
+        uint256 nonce;
+    }
+
+    function verifyDualProof(
+        SignedCheckpoint calldata checkpoint,
+        uint[2] calldata v3A,
+        uint[2][2] calldata v3B,
+        uint[2] calldata v3C,
+        uint[20] calldata v3Signals,
+        uint[2] calldata v4A,
+        uint[2][2] calldata v4B,
+        uint[2] calldata v4C,
+        uint[5] calldata v4Signals
+    ) external view returns (bool);
+}
+
+
+/// @notice Interface to the existing V3 checkpoint registry.
+/// @dev Registry enforces trusted signers, policy, and checkpoint replay rules.
+interface IEchoCheckpointRegistryForBridgeV4 {
+    struct SignedCheckpoint {
+        address account;
+        address delegatee;
+        bytes32 zoneHash;
+        bytes32 checkpointCommitment;
+        bytes32 authorizationCommitment;
+        uint64 timestamp;
+        uint256 nonce;
+    }
+
+    function checkpointDigest(
+        SignedCheckpoint calldata checkpoint
+    ) external view returns (bytes32);
+
+    function consumeCheckpointFromBridge(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature
+    ) external returns (bytes32);
+}
+
 contract EchoAuthorizationBridgeV4 {
     address public immutable dualProofVerifier;
     address public immutable checkpointRegistry;
 
     error InvalidDependency();
+
+    event AuthorizationConsumed(
+        address indexed account,
+        uint256 indexed nullifier,
+        address indexed target,
+        uint256 nonce
+    );
+
+    /// @notice Authorizes a transaction using both V3 and V4 proofs.
+    /// @dev Does not execute the transaction.
+    ///      All checks and consumption occur atomically.
+    function authorize(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        uint[2] calldata v3A,
+        uint[2][2] calldata v3B,
+        uint[2] calldata v3C,
+        uint[20] calldata v3Signals,
+        uint[2] calldata v4A,
+        uint[2][2] calldata v4B,
+        uint[2] calldata v4C,
+        uint[5] calldata v4Signals,
+        address target,
+        uint256 value,
+        bytes calldata callData,
+        uint256 expectedNonce
+    ) external returns (bool) {
+        _validateAccountAuthorization(checkpoint);
+
+        _validateCheckpointBinding(checkpoint, v3Signals);
+
+        _validateTransactionBinding(
+            v3Signals,
+            target,
+            value,
+            callData,
+            expectedNonce
+        );
+
+        _validateValidatorSignature(
+            checkpoint,
+            signature,
+            v3Signals
+        );
+
+        _validateDualProof(
+            checkpoint,
+            v3A,
+            v3B,
+            v3C,
+            v3Signals,
+            v4A,
+            v4B,
+            v4C,
+            v4Signals
+        );
+
+        _consumeAuthenticatedCheckpoint(
+            checkpoint,
+            signature
+        );
+
+        _consumeNullifier(
+            checkpoint.account,
+            v3Signals[2]
+        );
+
+        emit AuthorizationConsumed(
+            checkpoint.account,
+            v3Signals[2],
+            target,
+            expectedNonce
+        );
+
+        return true;
+    }
+
+
+    error InvalidDualProof();
+
+    /// @dev Requires both V3 and V4 proofs to pass verification.
+    ///      Internal-only until the complete authorization path exists.
+    function _validateDualProof(
+        SignedCheckpoint calldata checkpoint,
+        uint[2] calldata v3A,
+        uint[2][2] calldata v3B,
+        uint[2] calldata v3C,
+        uint[20] calldata v3Signals,
+        uint[2] calldata v4A,
+        uint[2][2] calldata v4B,
+        uint[2] calldata v4C,
+        uint[5] calldata v4Signals
+    ) internal view {
+        bool verified =
+            IEchoDualProofVerifierForBridgeV4(dualProofVerifier)
+                .verifyDualProof(
+                    IEchoDualProofVerifierForBridgeV4.SignedCheckpoint({
+                        account: checkpoint.account,
+                        delegatee: checkpoint.delegatee,
+                        zoneHash: checkpoint.zoneHash,
+                        checkpointCommitment: checkpoint.checkpointCommitment,
+                        authorizationCommitment: checkpoint.authorizationCommitment,
+                        timestamp: checkpoint.timestamp,
+                        nonce: checkpoint.nonce
+                    }),
+                    v3A,
+                    v3B,
+                    v3C,
+                    v3Signals,
+                    v4A,
+                    v4B,
+                    v4C,
+                    v4Signals
+                );
+
+        if (!verified) revert InvalidDualProof();
+    }
+
+
+    /// @dev Consumes a checkpoint using the existing V3 registry.
+    ///      The caller must first validate both ZK proofs, checkpoint
+    ///      bindings, transaction bindings, and validator signature.
+    ///      Internal-only until the complete authorization path exists.
+    function _consumeAuthenticatedCheckpoint(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature
+    ) internal returns (bytes32) {
+        return IEchoCheckpointRegistryForBridgeV4(checkpointRegistry)
+            .consumeCheckpointFromBridge(
+                IEchoCheckpointRegistryForBridgeV4.SignedCheckpoint({
+                    account: checkpoint.account,
+                    delegatee: checkpoint.delegatee,
+                    zoneHash: checkpoint.zoneHash,
+                    checkpointCommitment: checkpoint.checkpointCommitment,
+                    authorizationCommitment: checkpoint.authorizationCommitment,
+                    timestamp: checkpoint.timestamp,
+                    nonce: checkpoint.nonce
+                }),
+                signature
+            );
+    }
+
+
+    error ValidatorMismatch();
+
+    /// @dev Binds the recovered checkpoint signer to the V3 proof.
+    ///      Trusted-validator status is enforced separately by the registry.
+    function _validateValidatorSignature(
+        SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        uint[20] calldata signals
+    ) internal view {
+        bytes32 digest =
+            IEchoCheckpointRegistryForBridgeV4(checkpointRegistry)
+                .checkpointDigest(
+                    IEchoCheckpointRegistryForBridgeV4.SignedCheckpoint({
+                        account: checkpoint.account,
+                        delegatee: checkpoint.delegatee,
+                        zoneHash: checkpoint.zoneHash,
+                        checkpointCommitment: checkpoint.checkpointCommitment,
+                        authorizationCommitment: checkpoint.authorizationCommitment,
+                        timestamp: checkpoint.timestamp,
+                        nonce: checkpoint.nonce
+                    })
+                );
+
+        address recoveredValidator = ECDSA.recover(
+            digest,
+            signature
+        );
+
+        if (
+            signals[5] != uint256(uint160(recoveredValidator))
+        ) revert ValidatorMismatch();
+    }
+
 
     struct SignedCheckpoint {
         address account;
@@ -113,6 +342,26 @@ contract EchoAuthorizationBridgeV4 {
 
     error InvalidDelegatee();
     error UnauthorizedDelegatee();
+
+    error UnauthorizedAccount();
+
+    /// @dev Requires the account itself to call the bridge.
+    ///      Delegatee permissions are controlled by each account.
+    function _validateAccountAuthorization(
+        SignedCheckpoint calldata checkpoint
+    ) internal view {
+        if (msg.sender != checkpoint.account) {
+            revert UnauthorizedAccount();
+        }
+
+        if (
+            checkpoint.delegatee != checkpoint.account &&
+            !authorizedDelegatees[checkpoint.account][checkpoint.delegatee]
+        ) {
+            revert UnauthorizedDelegatee();
+        }
+    }
+
 
     /// @notice Each account manages its own delegatee permissions.
     function setAuthorizedDelegatee(
