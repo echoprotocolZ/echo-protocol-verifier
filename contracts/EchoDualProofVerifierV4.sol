@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "./EchoGeographicZoneV4.sol";
+
 /// @title EchoDualProofVerifierV4
 /// @notice Development-only dual-proof verification foundation.
 /// @dev The Original Echo Protocol Z.
@@ -43,6 +45,8 @@ contract EchoDualProofVerifierV4 {
 
     error InvalidDependency();
     error CheckpointMismatch();
+    error SignedZoneMismatch();
+    error GeographicSignalOutOfRange();
     error InvalidV3Proof();
     error InvalidV4Proof();
 
@@ -73,6 +77,27 @@ contract EchoDualProofVerifierV4 {
             v3Signals[18] != uint256(checkpoint.checkpointCommitment) ||
             v4Signals[4] != uint256(checkpoint.checkpointCommitment)
         ) revert CheckpointMismatch();
+
+
+        // Bind V4 geographic boundaries to the signed checkpoint.
+        if (
+            v4Signals[0] > 1800000000 ||
+            v4Signals[1] > 1800000000 ||
+            v4Signals[2] > 3600000000 ||
+            v4Signals[3] > 3600000000
+        ) revert GeographicSignalOutOfRange();
+
+        EchoGeographicZoneV4.Zone memory zone =
+            EchoGeographicZoneV4.Zone({
+                minLat: uint32(v4Signals[0]),
+                maxLat: uint32(v4Signals[1]),
+                minLon: uint32(v4Signals[2]),
+                maxLon: uint32(v4Signals[3])
+            });
+
+        if (EchoGeographicZoneV4.hash(zone) != checkpoint.zoneHash) {
+            revert SignedZoneMismatch();
+        }
 
         if (!v3Bridge.verifyCheckpointProof(
             checkpoint, v3A, v3B, v3C, v3Signals

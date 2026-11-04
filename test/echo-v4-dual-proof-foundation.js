@@ -29,10 +29,34 @@ describe("ECHO V4 Dual-Proof Foundation", function () {
 
     await dual.waitForDeployment();
 
+    const zone = {
+      minLat: 1200000000,
+      maxLat: 1210000000,
+      minLon: 2400000000,
+      maxLon: 2410000000
+    };
+
+    const zoneDomain = ethers.keccak256(
+      ethers.toUtf8Bytes("ECHO_V4_GEOGRAPHIC_ZONE_V1")
+    );
+
+    const zoneHash = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ["bytes32", "uint32", "uint32", "uint32", "uint32"],
+        [
+          zoneDomain,
+          zone.minLat,
+          zone.maxLat,
+          zone.minLon,
+          zone.maxLon
+        ]
+      )
+    );
+
     checkpoint = {
       account: account.address,
       delegatee: delegatee.address,
-      zoneHash: ethers.ZeroHash,
+      zoneHash,
       checkpointCommitment: ethers.toBeHex(12345, 32),
       authorizationCommitment: ethers.ZeroHash,
       timestamp: 1000,
@@ -43,6 +67,10 @@ describe("ECHO V4 Dual-Proof Foundation", function () {
     v4Signals = Array(5).fill(0n);
 
     v3Signals[18] = 12345n;
+    v4Signals[0] = BigInt(zone.minLat);
+    v4Signals[1] = BigInt(zone.maxLat);
+    v4Signals[2] = BigInt(zone.minLon);
+    v4Signals[3] = BigInt(zone.maxLon);
     v4Signals[4] = 12345n;
   });
 
@@ -89,4 +117,14 @@ describe("ECHO V4 Dual-Proof Foundation", function () {
     await v4.setApproved(false);
     await assert.rejects(verify());
   });
+  it("rejects a signed-zone mismatch", async function () {
+    checkpoint.zoneHash = ethers.ZeroHash;
+    await assert.rejects(verify(), /SignedZoneMismatch/);
+  });
+
+  it("rejects oversized geographic signals", async function () {
+    v4Signals[0] = 1800000001n;
+    await assert.rejects(verify(), /GeographicSignalOutOfRange/);
+  });
+
 });
