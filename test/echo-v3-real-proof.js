@@ -4,14 +4,14 @@ const { ethers } = require("hardhat");
 const fs = require("fs");
 
 describe("Echo V3 real Groth16 proof", function () {
-  it("verifies the 19-input proof in Solidity", async function () {
+  it("verifies the 20-input proof in Solidity", async function () {
     const calldata = fs.readFileSync(
-      "build/v3-bound/solidity-calldata.txt", "utf8"
+      "build/v3-timestamp-fixed/solidity-calldata.txt", "utf8"
     ).trim();
 
     const [a, b, c, signals] = JSON.parse("[" + calldata + "]");
 
-    expect(signals.length).to.equal(19);
+    expect(signals.length).to.equal(20);
 
     const Verifier = await ethers.getContractFactory(
       "EchoAuthorizationVerifierV3"

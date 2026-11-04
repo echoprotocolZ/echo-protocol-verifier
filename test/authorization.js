@@ -55,7 +55,7 @@ describe("Echo V2 local authorization tests", function () {
   beforeEach(async function () {
     [owner, validator, other] = await ethers.getSigners();
 
-    verifier = await (await ethers.getContractFactory("MockVerifier")).deploy();
+    verifier = await (await ethers.getContractFactory("MockVerifierV2")).deploy();
     registry = await (await ethers.getContractFactory("MockRegistry")).deploy();
 
     await registry.setValidator(validator.address, true, true);

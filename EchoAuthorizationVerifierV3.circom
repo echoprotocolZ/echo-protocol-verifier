@@ -32,6 +32,7 @@ template EchoAuthorizationVerifierV3() {
     signal input maxTimestamp;
 
     signal input expectedCheckpointCommitment;
+    signal input expectedCheckpointTimestamp;
 
     // Private fragment and checkpoint
     signal input fragmentPayload;
@@ -55,6 +56,7 @@ template EchoAuthorizationVerifierV3() {
     checkpointHash.inputs[2] <== checkpointTimestamp;
 
     expectedCheckpointCommitment === checkpointHash.out;
+    checkpointTimestamp === expectedCheckpointTimestamp;
 
     // Authorization hash
     component authorizationHash1 = Poseidon(16);
@@ -158,6 +160,7 @@ component main {
     public [
         expectedFragmentCommitment,
         expectedCheckpointCommitment,
+        expectedCheckpointTimestamp,
         expectedAuthorizationCommitment,
         expectedNullifier,
         account,

@@ -8,7 +8,7 @@ interface IEchoGroth16VerifierV3 {
         uint[2] calldata proofA,
         uint[2][2] calldata proofB,
         uint[2] calldata proofC,
-        uint[19] calldata signals
+        uint[20] calldata signals
     ) external view returns (bool);
 }
 
@@ -94,7 +94,7 @@ contract EchoAuthorizationBridgeV3 {
         uint[2] calldata proofA,
         uint[2][2] calldata proofB,
         uint[2] calldata proofC,
-        uint[19] calldata signals,
+        uint[20] calldata signals,
         address target,
         uint256 value,
         bytes calldata callData,
@@ -108,34 +108,35 @@ contract EchoAuthorizationBridgeV3 {
         ) revert UnauthorizedDelegatee();
 
 
-        if (signals[11] != block.chainid) revert InvalidChain();
-        if (block.timestamp > signals[13]) revert ExpiredAuthorization();
+        if (signals[10] != block.chainid) revert InvalidChain();
+        if (block.timestamp > signals[12]) revert ExpiredAuthorization();
 
         if (
-            uint256(checkpoint.checkpointCommitment) != signals[1] ||
-            uint256(checkpoint.authorizationCommitment) != signals[2] ||
-            uint256(uint160(checkpoint.account)) != signals[4] ||
-            uint256(uint160(checkpoint.delegatee)) != signals[5] ||
-            checkpoint.nonce != signals[12] ||
-            checkpoint.timestamp < signals[17] ||
-            checkpoint.timestamp > signals[18]
+            uint256(checkpoint.checkpointCommitment) != signals[18] ||
+            uint256(checkpoint.authorizationCommitment) != signals[1] ||
+            uint256(uint160(checkpoint.account)) != signals[3] ||
+            uint256(uint160(checkpoint.delegatee)) != signals[4] ||
+            checkpoint.nonce != signals[11] ||
+            checkpoint.timestamp < signals[16] ||
+            checkpoint.timestamp > signals[17] ||
+            uint256(checkpoint.timestamp) != signals[19]
         ) revert CheckpointBindingMismatch();
 
         if (
-            signals[7] != uint256(uint160(target)) ||
-            signals[8] != value
+            signals[6] != uint256(uint160(target)) ||
+            signals[7] != value
         ) revert InvalidTransaction();
 
-        if (signals[12] != expectedNonce) revert InvalidNonce();
+        if (signals[11] != expectedNonce) revert InvalidNonce();
 
         uint256 dataHash = uint256(keccak256(callData));
 
         if (
-            signals[9] != uint256(uint128(dataHash)) ||
-            signals[10] != (dataHash >> 128)
+            signals[8] != uint256(uint128(dataHash)) ||
+            signals[9] != (dataHash >> 128)
         ) revert InvalidTransaction();
 
-        uint256 nullifier = signals[3];
+        uint256 nullifier = signals[2];
 
         if (
             nullifier == 0 ||
@@ -164,7 +165,7 @@ contract EchoAuthorizationBridgeV3 {
         );
 
         if (
-            signals[6] != uint256(uint160(recoveredValidator))
+            signals[5] != uint256(uint160(recoveredValidator))
         ) revert ValidatorMismatch();
 
         IEchoCheckpointRegistryV3(checkpointRegistry)
@@ -202,16 +203,17 @@ contract EchoAuthorizationBridgeV3 {
         uint[2] calldata proofA,
         uint[2][2] calldata proofB,
         uint[2] calldata proofC,
-        uint[19] calldata signals
+        uint[20] calldata signals
     ) external view returns (bool) {
         if (
-            uint256(checkpoint.checkpointCommitment) != signals[1] ||
-            uint256(checkpoint.authorizationCommitment) != signals[2] ||
-            uint256(uint160(checkpoint.account)) != signals[4] ||
-            uint256(uint160(checkpoint.delegatee)) != signals[5] ||
-            checkpoint.nonce != signals[12] ||
-            checkpoint.timestamp < signals[17] ||
-            checkpoint.timestamp > signals[18]
+            uint256(checkpoint.checkpointCommitment) != signals[18] ||
+            uint256(checkpoint.authorizationCommitment) != signals[1] ||
+            uint256(uint160(checkpoint.account)) != signals[3] ||
+            uint256(uint160(checkpoint.delegatee)) != signals[4] ||
+            checkpoint.nonce != signals[11] ||
+            checkpoint.timestamp < signals[16] ||
+            checkpoint.timestamp > signals[17] ||
+            uint256(checkpoint.timestamp) != signals[19]
         ) revert CheckpointBindingMismatch();
 
         if (!verifier.verifyProof(proofA, proofB, proofC, signals)) {
@@ -226,16 +228,17 @@ contract EchoAuthorizationBridgeV3 {
     /// @dev This does not verify the signature or Groth16 proof.
     function validateCheckpointBinding(
         SignedCheckpoint calldata checkpoint,
-        uint[19] calldata signals
+        uint[20] calldata signals
     ) external pure returns (bool) {
         if (
-            uint256(checkpoint.checkpointCommitment) != signals[1] ||
-            uint256(checkpoint.authorizationCommitment) != signals[2] ||
-            uint256(uint160(checkpoint.account)) != signals[4] ||
-            uint256(uint160(checkpoint.delegatee)) != signals[5] ||
-            checkpoint.nonce != signals[12] ||
-            checkpoint.timestamp < signals[17] ||
-            checkpoint.timestamp > signals[18]
+            uint256(checkpoint.checkpointCommitment) != signals[18] ||
+            uint256(checkpoint.authorizationCommitment) != signals[1] ||
+            uint256(uint160(checkpoint.account)) != signals[3] ||
+            uint256(uint160(checkpoint.delegatee)) != signals[4] ||
+            checkpoint.nonce != signals[11] ||
+            checkpoint.timestamp < signals[16] ||
+            checkpoint.timestamp > signals[17] ||
+            uint256(checkpoint.timestamp) != signals[19]
         ) revert CheckpointBindingMismatch();
 
         return true;

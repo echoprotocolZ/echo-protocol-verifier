@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-contract MockVerifier {
+
+contract MockVerifierV2 {
     bool public proofValid = true;
 
     function setProofValid(bool valid) external {
@@ -13,6 +14,23 @@ contract MockVerifier {
         uint[2][2] calldata,
         uint[2] calldata,
         uint[17] calldata
+    ) external view returns (bool) {
+        return proofValid;
+    }
+}
+
+contract MockVerifier {
+    bool public proofValid = true;
+
+    function setProofValid(bool valid) external {
+        proofValid = valid;
+    }
+
+    function verifyProof(
+        uint[2] calldata,
+        uint[2][2] calldata,
+        uint[2] calldata,
+        uint[20] calldata
     ) external view returns (bool) {
         return proofValid;
     }

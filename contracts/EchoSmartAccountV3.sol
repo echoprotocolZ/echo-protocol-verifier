@@ -18,7 +18,7 @@ interface IEchoAuthorizationBridgeV3 {
         uint[2] calldata proofA,
         uint[2][2] calldata proofB,
         uint[2] calldata proofC,
-        uint[19] calldata signals,
+        uint[20] calldata signals,
         address target,
         uint256 value,
         bytes calldata callData,
@@ -65,6 +65,18 @@ contract EchoSmartAccountV3 {
         _;
     }
 
+    /// @notice Authenticate the caller against the signed delegatee.
+    modifier onlyAuthorizedExecutionCaller(
+        IEchoAuthorizationBridgeV3.SignedCheckpoint calldata checkpoint
+    ) {
+        if (
+            msg.sender != owner &&
+            (entryPoint == address(0) || msg.sender != entryPoint) &&
+            msg.sender != checkpoint.delegatee
+        ) revert Unauthorized();
+        _;
+    }
+
     constructor(
         address _owner,
         address _entryPoint,
@@ -85,6 +97,16 @@ contract EchoSmartAccountV3 {
             IEchoAuthorizationBridgeV3(_authorizationBridge);
     }
 
+    // Prevent nested authorized execution during external callbacks.
+    uint256 private _executionLock;
+
+    modifier nonReentrantExecution() {
+        if (_executionLock != 0) revert Unauthorized();
+        _executionLock = 1;
+        _;
+        _executionLock = 0;
+    }
+
     /// @notice Verifies authorization before executing a transaction.
     /// @dev Authorization and execution occur atomically.
     function executeAuthorized(
@@ -93,15 +115,37 @@ contract EchoSmartAccountV3 {
         uint[2] calldata proofA,
         uint[2][2] calldata proofB,
         uint[2] calldata proofC,
-        uint[19] calldata signals,
+        uint[20] calldata signals,
         address target,
         uint256 value,
         bytes calldata data
     )
         external
-        onlyOwnerOrEntryPoint
+        onlyAuthorizedExecutionCaller(checkpoint)
+        nonReentrantExecution
         returns (bytes memory result)
     {
+        // Delegated execution must never directly administer
+        // the authorization bridge or checkpoint registry.
+        if (target == address(authorizationBridge)) {
+            revert Unauthorized();
+        }
+
+        (bool registryOk, bytes memory registryResponse) =
+            address(authorizationBridge).staticcall(
+                abi.encodeWithSignature("checkpointRegistry()")
+            );
+
+        if (!registryOk || registryResponse.length != 32) {
+            revert InvalidAddress();
+        }
+
+        address registry = abi.decode(registryResponse, (address));
+
+        if (target == registry) {
+            revert Unauthorized();
+        }
+
         uint256 currentNonce = nonce;
 
         bool authorized = authorizationBridge.authorize(
@@ -121,7 +165,9 @@ contract EchoSmartAccountV3 {
 
         nonce = currentNonce + 1;
 
-        if (target == address(0)) revert InvalidAddress();
+        if (target == address(0) || target == address(this)) {
+            revert InvalidAddress();
+        }
 
         bool success;
         (success, result) = target.call{value: value}(data);
