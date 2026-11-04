@@ -233,6 +233,119 @@ describe("ECHO V3 real Groth16 authorization integration", function () {
 
     expect(await account.nonce()).to.equal(0n);
 
+
+    async function expectAttackRejected(label, attackArgs) {
+      let rejected = false;
+      try {
+        const tx = await account.executeAuthorized(...attackArgs);
+        await tx.wait();
+      } catch (error) {
+        rejected = true;
+      }
+
+      expect(rejected, `${label} must revert`).to.equal(true);
+      expect(await account.nonce()).to.equal(0n);
+      expect(await bridge.consumedNullifiers(nullifier)).to.equal(false);
+
+      const originalDigest = await registry.checkpointDigest(checkpoint);
+      expect(
+        await registry.consumedCheckpoints(originalDigest)
+      ).to.equal(false);
+
+      expect(await target.storedValue()).to.equal(0n);
+      console.log("ATTACK REJECTED:", label);
+    }
+
+    const alteredData = target.interface.encodeFunctionData(
+      "setValue", [999]
+    );
+
+    await expectAttackRejected(
+      "Altered transaction calldata",
+      [...args.slice(0, 8), alteredData]
+    );
+
+    const alteredSignals = [...signals];
+    alteredSignals[19] = (
+      BigInt(alteredSignals[19]) + 60n
+    ).toString();
+
+    await expectAttackRejected(
+      "Modified public timestamp signal",
+      [checkpoint, signature, a, b, c, alteredSignals,
+       target.target, 0, data]
+    );
+
+    const [, unauthorizedSigner] = await ethers.getSigners();
+    const badSignature = await owner.signTypedData(
+      domain, types, checkpoint
+    );
+
+    await expectAttackRejected(
+      "Unauthorized validator signature",
+      [checkpoint, badSignature, a, b, c, signals,
+       target.target, 0, data]
+    );
+
+    const modifiedCheckpoint = {
+      ...checkpoint,
+      checkpointCommitment: ethers.id("TAMPERED_CHECKPOINT")
+    };
+
+    const modifiedSignature = await validator.signTypedData(
+      domain, types, modifiedCheckpoint
+    );
+
+    await expectAttackRejected(
+      "Modified checkpoint commitment",
+      [modifiedCheckpoint, modifiedSignature, a, b, c, signals,
+       target.target, 0, data]
+    );
+
+
+    // Attack 5: Substitute a different transaction target.
+    const alternateTarget = await (
+      await ethers.getContractFactory("TestTarget")
+    ).deploy();
+
+    await expectAttackRejected(
+      "Substituted transaction target",
+      [checkpoint, signature, a, b, c, signals,
+       alternateTarget.target, 0, data]
+    );
+
+    expect(await alternateTarget.storedValue()).to.equal(0n);
+
+    // Attack 6: Change the public nonce without a new proof.
+    const tamperedNonceSignals = [...signals];
+    tamperedNonceSignals[11] = "1";
+
+    await expectAttackRejected(
+      "Modified authorization nonce",
+      [checkpoint, signature, a, b, c, tamperedNonceSignals,
+       target.target, 0, data]
+    );
+
+    // Attack 7: Expire the authorization by advancing block time.
+    // Use a snapshot so the legitimate proof remains valid afterward.
+    const snapshot = await ethers.provider.send(
+      "evm_snapshot", []
+    );
+
+    try {
+      await ethers.provider.send("evm_setNextBlockTimestamp", [
+        Number(deadline + 1n)
+      ]);
+      await ethers.provider.send("evm_mine", []);
+
+      await expectAttackRejected(
+        "Expired authorization",
+        args
+      );
+    } finally {
+      await ethers.provider.send("evm_revert", [snapshot]);
+    }
+
     await (await account.executeAuthorized(...args)).wait();
 
     expect(await target.storedValue()).to.equal(888n);
