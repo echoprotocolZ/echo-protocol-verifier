@@ -1,0 +1,37 @@
+{
+  "project": "ECHO Protocol V3",
+  "status": "Development artifacts - not production trusted setup",
+  "proofSystem": "Groth16",
+  "curve": "BN254",
+  "publicSignalCount": 20,
+  "artifacts": {
+    "circuit": {
+      "path": "EchoAuthorizationVerifierV3.circom",
+      "sha256": "dd8aa917485ef6fbe44da6098c5b291e596c1770f88faeff4b6805c99902e14e"
+    },
+    "solidityVerifier": {
+      "path": "contracts/EchoAuthorizationVerifierV3.sol",
+      "sha256": "4854d992e31fd1427db6dba1afb6569eb24b22e855e6b13dc9e243cb59689cee"
+    },
+    "provingKey": {
+      "path": "build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey",
+      "sha256": "253a46ab165b04f2056b3817bded19c45c6d1596eea84e0e5c0464a65bad1d7d"
+    },
+    "verificationKey": {
+      "path": "build/v3-timestamp-fixed/verification_key.json",
+      "sha256": "7aba86ae816ae5a28e13b552ef1c4621ce3ffed34b887a02baa3e1be0def769e"
+    },
+    "witnessWasm": {
+      "path": "build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_js/EchoAuthorizationVerifierV3.wasm",
+      "sha256": "54dcc8e064effdcdf41d974a0a37ba47d94406401f04e310c807c8c126a6e4a7"
+    },
+    "publicSignals": {
+      "path": "build/v3-timestamp-fixed/public.json",
+      "sha256": "bac7b242ccf66a30576f8683313ba2ac10c32d41ccdfd6e11ccc3ca6de515797"
+    },
+    "proof": {
+      "path": "build/v3-timestamp-fixed/proof.json",
+      "sha256": "5d0e1d47ef5d4ac6b9bd1e4feff5b9d9effb744b82b7c79e1c7880c664b98f75"
+    }
+  }
+}
