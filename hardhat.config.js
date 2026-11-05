@@ -11,5 +11,14 @@ module.exports = {
       },
       viaIR: true
     }
+  },
+  networks: {
+    amoy: {
+      url: process.env.AMOY_RPC_URL || "https://polygon-amoy.drpc.org",
+      chainId: 80002,
+      accounts: process.env.AMOY_DEPLOYER_PRIVATE_KEY
+        ? [process.env.AMOY_DEPLOYER_PRIVATE_KEY]
+        : []
+    }
   }
 };
