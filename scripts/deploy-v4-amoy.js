@@ -1,4 +1,5 @@
 const hre = require("hardhat");
+const { verifyConnections } = require("./amoy-verify-connections");
 const {
   loadPending,
   recordTransaction,
@@ -77,6 +78,7 @@ async function main() {
           "Conflicting saved deployment and pending transaction: " + name
         );
       }
+      await verifyConnections(name, existing, args);
       return hre.ethers.getContractAt(name, existing);
     }
 
@@ -118,17 +120,20 @@ async function main() {
         throw new Error("Recovered deployment has no code: " + name);
       }
 
-      const artifact = await hre.artifacts.readArtifact(name);
+      const verificationRecords = {
+        chainId: 80002,
+        contracts: {
+          [name]: receipt.contractAddress
+        }
+      };
 
-      if (
-        code.toLowerCase() !==
-        artifact.deployedBytecode.toLowerCase()
-      ) {
-        throw new Error(
-          "Recovered contract bytecode mismatch: " + name
-        );
-      }
+      await getExistingDeployment(
+        hre.ethers.provider,
+        verificationRecords,
+        name
+      );
 
+      await verifyConnections(name, receipt.contractAddress, args);
       records.contracts[name] = receipt.contractAddress;
       saveRecords(records);
       clearTransaction(name);
@@ -186,15 +191,20 @@ async function main() {
       throw new Error("No contract code found: " + name);
     }
 
-    const artifact = await hre.artifacts.readArtifact(name);
+    const verificationRecords = {
+      chainId: 80002,
+      contracts: {
+        [name]: address
+      }
+    };
 
-    if (
-      code.toLowerCase() !==
-      artifact.deployedBytecode.toLowerCase()
-    ) {
-      throw new Error("Deployed bytecode mismatch: " + name);
-    }
+    await getExistingDeployment(
+      hre.ethers.provider,
+      verificationRecords,
+      name
+    );
 
+    await verifyConnections(name, address, args);
     records.contracts[name] = address;
     saveRecords(records);
     clearTransaction(name);

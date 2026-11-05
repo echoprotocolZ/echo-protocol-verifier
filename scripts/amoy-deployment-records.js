@@ -53,12 +53,49 @@ async function getExistingDeployment(provider, records, name) {
   }
 
   const hre = require("hardhat");
-  const artifact = await hre.artifacts.readArtifact(name);
 
-  if (code.toLowerCase() !== artifact.deployedBytecode.toLowerCase()) {
+  const names = await hre.artifacts.getAllFullyQualifiedNames();
+  const matches = names.filter(n => n.endsWith(":" + name));
+
+  if (matches.length !== 1) {
+    throw new Error("Ambiguous contract name: " + name);
+  }
+
+  const info = await hre.artifacts.getBuildInfo(matches[0]);
+
+  if (!info) {
+    throw new Error("Missing compiler build information: " + name);
+  }
+
+  const [source, contractName] = matches[0].split(":");
+  const compiled = info.output.contracts[source][contractName]
+    .evm.deployedBytecode;
+
+  const expected = compiled.object.toLowerCase();
+  const actual = code.slice(2).toLowerCase();
+
+  if (actual.length !== expected.length) {
+    throw new Error("Contract bytecode length mismatch: " + name);
+  }
+
+  const masked = expected.split("");
+
+  for (const entries of Object.values(
+    compiled.immutableReferences || {}
+  )) {
+    for (const ref of entries) {
+      const start = ref.start * 2;
+      const end = start + ref.length * 2;
+
+      for (let i = start; i < end; i++) {
+        masked[i] = actual[i];
+      }
+    }
+  }
+
+  if (masked.join("") !== actual) {
     throw new Error(
-      "Contract bytecode mismatch for " + name +
-      " at " + address + ". Deployment stopped."
+      "Contract bytecode mismatch outside immutable references: " + name
     );
   }
 
