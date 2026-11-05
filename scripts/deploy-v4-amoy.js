@@ -1,4 +1,16 @@
 const hre = require("hardhat");
+const {
+  loadPending,
+  recordTransaction,
+  clearTransaction
+} = require("./amoy-transaction-journal");
+
+const {
+  loadRecords,
+  saveRecords,
+  getExistingDeployment
+} = require("./amoy-deployment-records");
+
 
 const EXPECTED_CHAIN_ID = 80002n;
 const EXPECTED_DEPLOYER =
@@ -48,17 +60,110 @@ async function main() {
     throw new Error("Wallet needs Amoy testnet POL.");
   }
 
+  const records = loadRecords();
+
   async function deploy(name, args = []) {
+    const existing = await getExistingDeployment(
+      hre.ethers.provider,
+      records,
+      name
+    );
+
+    const pending = loadPending();
+
+    if (existing) {
+      if (pending[name]) {
+        throw new Error(
+          "Conflicting saved deployment and pending transaction: " + name
+        );
+      }
+      return hre.ethers.getContractAt(name, existing);
+    }
+
+    if (pending[name]) {
+      console.log("RECOVERING:", name, pending[name]);
+
+      const receipt = await hre.ethers.provider.getTransactionReceipt(
+        pending[name]
+      );
+
+      if (!receipt) {
+        throw new Error(
+          "Transaction is pending or unavailable. Do not redeploy: " +
+          pending[name]
+        );
+      }
+
+      if (receipt.status !== 1 || !receipt.contractAddress) {
+        throw new Error(
+          "Deployment transaction failed or has no contract address: " +
+          pending[name]
+        );
+      }
+
+      const code = await hre.ethers.provider.getCode(
+        receipt.contractAddress
+      );
+
+      if (code === "0x") {
+        throw new Error("Recovered deployment has no code: " + name);
+      }
+
+      const artifact = await hre.artifacts.readArtifact(name);
+
+      if (
+        code.toLowerCase() !==
+        artifact.deployedBytecode.toLowerCase()
+      ) {
+        throw new Error(
+          "Recovered contract bytecode mismatch: " + name
+        );
+      }
+
+      records.contracts[name] = receipt.contractAddress;
+      saveRecords(records);
+      clearTransaction(name);
+
+      console.log("RECOVERED:", name, receipt.contractAddress);
+
+      return hre.ethers.getContractAt(
+        name,
+        receipt.contractAddress
+      );
+    }
+
     console.log("Deploying:", name);
 
     const factory = await hre.ethers.getContractFactory(name);
     const contract = await factory.deploy(...args);
+    const tx = contract.deploymentTransaction();
+
+    recordTransaction(name, tx.hash);
+    console.log("Transaction:", tx.hash);
 
     await contract.waitForDeployment();
 
     const address = await contract.getAddress();
+    const code = await hre.ethers.provider.getCode(address);
 
-    console.log(name + ":", address);
+    if (code === "0x") {
+      throw new Error("No contract code found: " + name);
+    }
+
+    const artifact = await hre.artifacts.readArtifact(name);
+
+    if (
+      code.toLowerCase() !==
+      artifact.deployedBytecode.toLowerCase()
+    ) {
+      throw new Error("Deployed bytecode mismatch: " + name);
+    }
+
+    records.contracts[name] = address;
+    saveRecords(records);
+    clearTransaction(name);
+
+    console.log("SAVED:", name, address);
 
     return contract;
   }

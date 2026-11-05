@@ -22,3 +22,4 @@ typechain-types/
 *.key
 *.secret
 *.keystore
+deployments/amoy/*.json
