@@ -81,6 +81,15 @@ async function main() {
     }
 
     if (pending[name]) {
+      if (pending[name] === "ATTEMPT_NOT_YET_RECONCILED") {
+        throw new Error(
+          "Deployment attempt requires manual reconciliation: " +
+          name +
+          ". Do not clear the lock or redeploy until the " +
+          "wallet's transaction history has been checked."
+        );
+      }
+
       console.log("RECOVERING:", name, pending[name]);
 
       const receipt = await hre.ethers.provider.getTransactionReceipt(
@@ -135,10 +144,37 @@ async function main() {
     console.log("Deploying:", name);
 
     const factory = await hre.ethers.getContractFactory(name);
-    const contract = await factory.deploy(...args);
-    const tx = contract.deploymentTransaction();
 
-    recordTransaction(name, tx.hash);
+    // Record an attempt before broadcasting anything.
+    // If interrupted, require manual transaction reconciliation.
+    const pendingBefore = loadPending();
+
+    if (pendingBefore[name]) {
+      throw new Error("Unresolved deployment attempt: " + name);
+    }
+
+    const attempt = "ATTEMPT_NOT_YET_RECONCILED";
+    recordTransaction(name, attempt);
+
+    let contract;
+    let tx;
+
+    try {
+      contract = await factory.deploy(...args);
+      tx = contract.deploymentTransaction();
+    } catch (error) {
+      throw new Error(
+        "Deployment attempt requires reconciliation for " +
+        name + ": " + error.message
+      );
+    }
+
+    const pendingAfter = loadPending();
+    pendingAfter[name] = tx.hash;
+
+    const journal = require("./amoy-transaction-journal");
+    journal.savePending(pendingAfter);
+
     console.log("Transaction:", tx.hash);
 
     await contract.waitForDeployment();

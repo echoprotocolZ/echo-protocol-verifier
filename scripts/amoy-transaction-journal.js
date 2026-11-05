@@ -52,6 +52,7 @@ function clearTransaction(name) {
 }
 
 module.exports = {
+  savePending,
   loadPending,
   recordTransaction,
   clearTransaction
