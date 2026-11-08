@@ -138,25 +138,15 @@ contract EchoSmartAccountV4 {
         return output;
     }
 
+    /// @notice Disabled until proof-bound administration is implemented.
     function executeAdministration(
         address destination,
         bytes calldata data
     ) external nonReentrantExecution returns (bytes memory result) {
-        if (msg.sender != owner) revert Unauthorized();
-
-        address registry = authorizationBridge.checkpointRegistry();
-
-        if (
-            destination != registry &&
-            destination != address(authorizationBridge)
-        ) revert Unauthorized();
-
-        (bool success, bytes memory output) = destination.call(data);
-        if (!success) revert ExecutionFailed(output);
-
-        return output;
+        destination;
+        data;
+        revert Unauthorized();
     }
-
 
     /// @notice Owner-only geographic policy administration.
     /// @dev Resolves the policy registry through immutable V4 dependencies.
@@ -204,9 +194,8 @@ contract EchoSmartAccountV4 {
     }
 
     function setEntryPoint(address newEntryPoint) external {
-        if (msg.sender != owner) revert Unauthorized();
-        emit EntryPointUpdated(entryPoint, newEntryPoint);
-        entryPoint = newEntryPoint;
+        newEntryPoint;
+        revert Unauthorized();
     }
 
     function transferOwnership(address newOwner) external {
