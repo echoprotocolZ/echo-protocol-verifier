@@ -35,6 +35,7 @@ interface IEchoAuthorizationBridgeForAccountV4 {
 
 contract EchoSmartAccountV4 {
     address public owner;
+    address public pendingOwner;
     address public entryPoint;
     IEchoAuthorizationBridgeForAccountV4 public immutable authorizationBridge;
 
@@ -42,6 +43,7 @@ contract EchoSmartAccountV4 {
     uint256 private executionLock;
 
     event Executed(address indexed target, uint256 value, bytes data, uint256 nonce);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event EntryPointUpdated(address indexed previousEntryPoint, address indexed newEntryPoint);
 
@@ -209,8 +211,19 @@ contract EchoSmartAccountV4 {
 
     function transferOwnership(address newOwner) external {
         if (msg.sender != owner || newOwner == address(0)) revert Unauthorized();
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner || pendingOwner == address(0))
+            revert Unauthorized();
+
+        address previousOwner = owner;
+        owner = pendingOwner;
+        pendingOwner = address(0);
+
+        emit OwnershipTransferred(previousOwner, owner);
     }
 
     receive() external payable {}
