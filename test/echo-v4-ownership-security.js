@@ -83,4 +83,22 @@ describe("ECHO V4 ownership security", function () {
     expect(await account.owner()).to.equal(outsider.address);
   });
 
+
+  it("allows only the new owner to rotate the entry point", async function () {
+    await account.connect(owner).setEntryPoint(owner.address);
+
+    await account.connect(owner).transferOwnership(newOwner.address);
+    await account.connect(newOwner).acceptOwnership();
+
+    await assert.rejects(
+      account.connect(owner).setEntryPoint(owner.address),
+      /Unauthorized/
+    );
+
+    await account.connect(newOwner).setEntryPoint(outsider.address);
+
+    expect(await account.entryPoint()).to.equal(outsider.address);
+    expect(await account.owner()).to.equal(newOwner.address);
+  });
+
 });
