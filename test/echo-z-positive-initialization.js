@@ -27,6 +27,7 @@ describe("Echo Protocol Z positive initialization", function () {
       registry.target
     );
 
+    const agentPolicyRegistry = await deploy("EchoAgentPolicyRegistryZ");
     const geographicPolicy = await deploy(
       "EchoGeographicPolicyRegistryV4"
     );
@@ -144,7 +145,7 @@ describe("Echo Protocol Z positive initialization", function () {
       owner: owner.address,
       entryPoint: ethers.ZeroAddress,
       bridge: v4Bridge.target,
-      agentPolicyRegistry: v4Bridge.target,
+      agentPolicyRegistry: agentPolicyRegistry.target,
       salt,
       configHash,
       deadline
@@ -204,7 +205,7 @@ describe("Echo Protocol Z positive initialization", function () {
         owner: owner.address,
         entryPoint: ethers.ZeroAddress,
         bridge: v4Bridge.target,
-      agentPolicyRegistry: v4Bridge.target,
+      agentPolicyRegistry: agentPolicyRegistry.target,
         salt: badSalt,
         configHash: badHash,
         deadline
@@ -222,7 +223,7 @@ describe("Echo Protocol Z positive initialization", function () {
           owner.address,
           ethers.ZeroAddress,
           v4Bridge.target,
-          v4Bridge.target,
+          agentPolicyRegistry.target,
           badSalt,
           targets,
           badCalls,
@@ -289,7 +290,7 @@ describe("Echo Protocol Z positive initialization", function () {
         owner: owner.address,
         entryPoint: ethers.ZeroAddress,
         bridge: v4Bridge.target,
-      agentPolicyRegistry: v4Bridge.target,
+      agentPolicyRegistry: agentPolicyRegistry.target,
         salt: badSalt,
         configHash: badHash,
         deadline
@@ -307,7 +308,7 @@ describe("Echo Protocol Z positive initialization", function () {
           owner.address,
           ethers.ZeroAddress,
           v4Bridge.target,
-          v4Bridge.target,
+          agentPolicyRegistry.target,
           badSalt,
           targets,
           badCalls,
@@ -331,7 +332,7 @@ describe("Echo Protocol Z positive initialization", function () {
         owner.address,
         ethers.ZeroAddress,
         v4Bridge.target,
-        v4Bridge.target,
+        agentPolicyRegistry.target,
         salt,
         targets,
         calls,
@@ -424,7 +425,7 @@ describe("Echo Protocol Z positive initialization", function () {
         owner.address,
         ethers.ZeroAddress,
         v4Bridge.target,
-        v4Bridge.target,
+        agentPolicyRegistry.target,
         salt,
         targets,
         calls,
