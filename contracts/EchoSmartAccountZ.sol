@@ -324,6 +324,21 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
 
             if (agent != delegatee) revert InvalidAgentPolicyUpdate();
 
+        } else if (selector == bytes4(
+            keccak256("setTokenApprovalLimit(address,address,address,uint256)")
+        )) {
+            if (data.length != 132) revert InvalidAgentPolicyUpdate();
+
+            (address agent, address token, address spender,) = abi.decode(
+                data[4:], (address,address,address,uint256)
+            );
+
+            if (
+                agent != delegatee ||
+                token == address(0) ||
+                spender == address(0)
+            ) revert InvalidAgentPolicyUpdate();
+
         } else {
             revert InvalidAgentPolicyUpdate();
         }

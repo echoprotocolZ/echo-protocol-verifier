@@ -19,6 +19,21 @@ contract EchoAgentPolicyRegistryZ {
     mapping(address => mapping(address => mapping(address => mapping(bytes4 => bool))))
         public approvedSelectors;
 
+
+    mapping(address => mapping(address => mapping(address => mapping(address => uint256))))
+        public tokenApprovalLimits;
+
+    mapping(address => mapping(address => bool))
+        public protectedTokens;
+
+    event TokenApprovalLimitUpdated(
+        address indexed account,
+        address indexed agent,
+        address indexed token,
+        address spender,
+        uint256 limit
+    );
+
     event AgentPolicyUpdated(
         address indexed account,
         address indexed agent,
@@ -49,6 +64,29 @@ contract EchoAgentPolicyRegistryZ {
     error TargetNotApproved();
     error SelectorNotApproved();
     error SpendingLimitExceeded();
+
+
+    function setProtectedToken(address token, bool protected_) external {
+        if (token == address(0)) revert InvalidTarget();
+        protectedTokens[msg.sender][token] = protected_;
+    }
+
+    function setTokenApprovalLimit(
+        address agent,
+        address token,
+        address spender,
+        uint256 limit
+    ) external {
+        if (agent == address(0)) revert InvalidAgent();
+        if (token == address(0) || spender == address(0))
+            revert InvalidTarget();
+
+        tokenApprovalLimits[msg.sender][agent][token][spender] = limit;
+
+        emit TokenApprovalLimitUpdated(
+            msg.sender, agent, token, spender, limit
+        );
+    }
 
     function setAgentPolicy(
         address agent,
@@ -138,6 +176,27 @@ contract EchoAgentPolicyRegistryZ {
 
         if (!approvedSelectors[account][agent][target][selector])
             revert SelectorNotApproved();
+
+
+        if (selector == 0x095ea7b3) {
+            // ERC-20 approve(address,uint256).
+            // Require canonical calldata and explicit spender allowance.
+            if (data.length != 68) revert SpendingLimitExceeded();
+
+            (address spender, uint256 amount) =
+                abi.decode(data[4:], (address, uint256));
+
+            uint256 limit =
+                tokenApprovalLimits[account][agent][target][spender];
+
+            if (limit == 0 || amount > limit)
+                revert SpendingLimitExceeded();
+        }
+
+        // Protected tokens cannot be moved through transfer/transferFrom.
+        if (protectedTokens[account][target] &&
+            (selector == 0xa9059cbb || selector == 0x23b872dd))
+            revert SpendingLimitExceeded();
 
         return true;
     }

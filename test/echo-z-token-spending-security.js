@@ -37,6 +37,62 @@ describe("Echo Z token-spending security", function () {
       true
     );
 
+
+    // Configure a legitimate spender and a 1,000 ECHO limit.
+    await registry.connect(account).setTokenApprovalLimit(
+      agent.address,
+      token.target,
+      spender.address,
+      ethers.parseEther("1000")
+    );
+
+    const allowedApproval = token.interface.encodeFunctionData(
+      "approve",
+      [spender.address, ethers.parseEther("1000")]
+    );
+
+    assert.equal(
+      await registry.validateExecution(
+        account.address, agent.address, token.target, 0, allowedApproval
+      ),
+      true
+    );
+
+    const [, unauthorizedSpender] = await ethers.getSigners();
+    const otherSpender = (await ethers.getSigners())[3];
+
+    const unauthorizedApproval = token.interface.encodeFunctionData(
+      "approve",
+      [otherSpender.address, ethers.parseEther("1000")]
+    );
+
+    await assert.rejects(async () => {
+      await registry.validateExecution(
+        account.address,
+        agent.address,
+        token.target,
+        0,
+        unauthorizedApproval
+      );
+    });
+
+    console.log("PASS: Authorized 1,000 ECHO approval");
+    console.log("PASS: Unauthorized spender rejected");
+
+    // A view-only policy cannot track cumulative approvals.
+    const repeatedApprovalAllowed = await registry.validateExecution(
+      account.address,
+      agent.address,
+      token.target,
+      0,
+      allowedApproval
+    );
+
+    assert.equal(repeatedApprovalAllowed, true);
+
+    console.log("CONFIRMED: Repeated approval passes stateless policy");
+
+
     const excessiveApproval = token.interface.encodeFunctionData(
       "approve",
       [spender.address, ethers.parseEther("1000000")]

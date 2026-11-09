@@ -1992,6 +1992,31 @@ describe("Echo Protocol Z positive initialization", function () {
         true
       );
 
+
+      // Permission 5: Limit ECHO approvals to the staking contract.
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setTokenApprovalLimit",
+          [
+            agent.address,
+            echoTokenMock.target,
+            echoStakingMock.target,
+            ethers.parseEther("1000")
+          ]
+        )
+      );
+
+      assert.equal(
+        await agentPolicyRegistry.tokenApprovalLimits(
+          account.target,
+          agent.address,
+          echoTokenMock.target,
+          echoStakingMock.target
+        ),
+        ethers.parseEther("1000")
+      );
+
+      console.log("PASS: Proof-authorized 1,000 ECHO approval limit");
       console.log("PASS: Four proof-authorized staking permissions");
 
       const stakeAmount = ethers.parseEther("1000");
