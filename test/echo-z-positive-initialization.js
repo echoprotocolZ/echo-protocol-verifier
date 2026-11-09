@@ -765,6 +765,35 @@ describe("Echo Protocol Z positive initialization", function () {
         "Tampered transaction changed the nonce"
       );
 
+
+      // Unauthorized callers must never migrate geographic policies.
+      const migrationZone = {
+        ...zone,
+        maxLat: zone.maxLat + 1
+      };
+
+      const migrationArgs = [
+        checkpoint,
+        signature,
+        a, b, c, signals,
+        v4A, v4B, v4C, v4Signals,
+        agent.address,
+        migrationZone
+      ];
+
+      await assert.rejects(async () => {
+        const tx = await account.connect(agent)
+          .executeProofAuthorizedZoneMigration(...migrationArgs);
+        await tx.wait();
+      });
+
+      assert.equal(
+        await account.nonce(),
+        nonceBeforeProof
+      );
+
+      console.log("REJECTED: unauthorized zone migration");
+
       console.log("REJECTED: modified administrative calldata");
 
 

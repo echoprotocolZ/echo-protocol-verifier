@@ -367,4 +367,192 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         return output;
     }
 
+
+    event ZoneMigrationExecuted(
+        address indexed delegatee,
+        bytes32 oldZoneHash,
+        bytes32 newZoneHash,
+        uint256 nonceUsed
+    );
+
+    error InvalidZoneMigration();
+
+    function executeProofAuthorizedZoneMigration(
+        IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        uint[2] calldata v3A,
+        uint[2][2] calldata v3B,
+        uint[2] calldata v3C,
+        uint[20] calldata v3Signals,
+        uint[2] calldata v4A,
+        uint[2][2] calldata v4B,
+        uint[2] calldata v4C,
+        uint[5] calldata v4Signals,
+        address delegatee,
+        EchoGeographicZoneV4.Zone calldata newZone
+    ) external nonReentrantExecution {
+        if (!initialized || msg.sender != owner) revert Unauthorized();
+        if (checkpoint.account != address(this)) revert Unauthorized();
+        if (
+            delegatee == address(0) ||
+            checkpoint.delegatee != delegatee
+        ) revert InvalidZoneMigration();
+
+        address registry = authorizationBridge.checkpointRegistry();
+        address dualVerifier = authorizationBridge.dualProofVerifier();
+
+        (bool ok, bytes memory response) = dualVerifier.staticcall(
+            abi.encodeWithSignature("v4Gateway()")
+        );
+        if (!ok || response.length != 32) revert InvalidAddress();
+
+        address gateway = abi.decode(response, (address));
+        if (gateway.code.length == 0) revert InvalidAddress();
+
+        (ok, response) = gateway.staticcall(
+            abi.encodeWithSignature("policyRegistry()")
+        );
+        if (!ok || response.length != 32) revert InvalidAddress();
+
+        address geographicRegistry = abi.decode(response, (address));
+        if (
+            geographicRegistry.code.length == 0 ||
+            registry.code.length == 0
+        ) revert InvalidAddress();
+
+        (ok, response) = registry.staticcall(
+            abi.encodeWithSignature(
+                "attestationPolicies(address,address)",
+                address(this),
+                delegatee
+            )
+        );
+        if (!ok || response.length != 160) {
+            revert InvalidZoneMigration();
+        }
+
+        (
+            bytes32 oldZoneHash,
+            uint64 maxTimeDrift,
+            uint8 requiredTier,
+            bool allowFallback,
+            bool enabled
+        ) = abi.decode(
+            response,
+            (bytes32, uint64, uint8, bool, bool)
+        );
+
+        if (!enabled || oldZoneHash == bytes32(0)) {
+            revert InvalidZoneMigration();
+        }
+
+        // Existing attestation and geographic policies must agree.
+        (ok, response) = geographicRegistry.staticcall(
+            abi.encodeWithSignature(
+                "getGeographicPolicy(address,address)",
+                address(this),
+                delegatee
+            )
+        );
+
+        if (!ok) revert InvalidZoneMigration();
+
+        (
+            EchoGeographicZoneV4.Zone memory existingZone,
+            bytes32 geographicZoneHash,
+            bool geographicEnabled
+        ) = abi.decode(
+            response,
+            (EchoGeographicZoneV4.Zone, bytes32, bool)
+        );
+
+        if (
+            !geographicEnabled ||
+            geographicZoneHash != oldZoneHash ||
+            EchoGeographicZoneV4.hash(existingZone) != oldZoneHash
+        ) revert InvalidZoneMigration();
+
+        bytes32 newZoneHash = EchoGeographicZoneV4.hash(newZone);
+        if (newZoneHash == oldZoneHash) revert InvalidZoneMigration();
+
+        // Bind the proof to the entire migration request.
+        bytes memory migrationData = abi.encodeWithSelector(
+            this.executeProofAuthorizedZoneMigration.selector,
+            delegatee,
+            newZone,
+            oldZoneHash,
+            maxTimeDrift,
+            requiredTier,
+            allowFallback
+        );
+
+        uint256 currentNonce = nonce;
+
+        bool authorized = authorizationBridge.authorize(
+            checkpoint,
+            signature,
+            v3A,
+            v3B,
+            v3C,
+            v3Signals,
+            v4A,
+            v4B,
+            v4C,
+            v4Signals,
+            address(this),
+            0,
+            migrationData,
+            currentNonce
+        );
+
+        if (!authorized) revert AuthorizationFailed();
+
+        nonce = currentNonce + 1;
+
+        // Update the attestation policy without changing its security tier.
+        bytes memory policyCallData = abi.encodePacked(
+            bytes4(
+                keccak256(
+                    "setAttestationPolicy(address,(bytes32,uint64,uint8,bool,bool))"
+                )
+            ),
+            abi.encode(
+                delegatee,
+                newZoneHash,
+                maxTimeDrift,
+                requiredTier,
+                allowFallback,
+                true
+            )
+        );
+
+        (bool attestationSuccess, bytes memory attestationResult) =
+            registry.call(policyCallData);
+
+        if (!attestationSuccess) {
+            revert ExecutionFailed(attestationResult);
+        }
+
+        // Update the geographic policy in the same transaction.
+        (bool geographicSuccess, bytes memory geographicResult) =
+            geographicRegistry.call(
+                abi.encodeWithSignature(
+                    "setGeographicPolicy(address,(uint32,uint32,uint32,uint32))",
+                    delegatee,
+                    newZone
+                )
+            );
+
+        if (!geographicSuccess) {
+            revert ExecutionFailed(geographicResult);
+        }
+
+        emit ZoneMigrationExecuted(
+            delegatee,
+            oldZoneHash,
+            newZoneHash,
+            currentNonce
+        );
+    }
+
 }
