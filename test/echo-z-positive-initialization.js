@@ -2072,6 +2072,32 @@ describe("Echo Protocol Z positive initialization", function () {
         deadline: stakingDeadline
       });
 
+      // Unauthorized wallet must not execute the agent's valid proof.
+      const nonceBeforeUnauthorized = await account.nonce();
+
+      await assert.rejects(async () => {
+        const tx = await account.connect(outsider)
+          .executeAuthorized(
+            stakeAuth.checkpoint,
+            stakeAuth.signature,
+            stakeAuth.proof.v3A,
+            stakeAuth.proof.v3B,
+            stakeAuth.proof.v3C,
+            stakeAuth.proof.v3Signals,
+            stakeAuth.proof.v4A,
+            stakeAuth.proof.v4B,
+            stakeAuth.proof.v4C,
+            stakeAuth.proof.v4Signals,
+            echoStakingMock.target,
+            0,
+            stakeData
+          );
+        await tx.wait();
+      });
+
+      assert.equal(await account.nonce(), nonceBeforeUnauthorized);
+      console.log("PASS: Unauthorized wallet staking rejected");
+
       const stakeTx = await account.connect(agent)
         .executeAuthorized(
           stakeAuth.checkpoint,
