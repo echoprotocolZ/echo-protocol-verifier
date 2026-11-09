@@ -7,7 +7,7 @@ import "./EchoSmartAccountZ.sol";
 
 contract EchoAccountFactoryZ is EIP712 {
     bytes32 private constant DEPLOY_TYPEHASH = keccak256(
-        "Deploy(address owner,address entryPoint,address bridge,bytes32 salt,bytes32 configHash,uint256 deadline)"
+        "Deploy(address owner,address entryPoint,address bridge,address agentPolicyRegistry,bytes32 salt,bytes32 configHash,uint256 deadline)"
     );
 
     event AccountCreated(
@@ -19,6 +19,7 @@ contract EchoAccountFactoryZ is EIP712 {
 
     error InvalidOwner();
     error InvalidBridge();
+    error InvalidAgentPolicyRegistry();
     error InvalidConfiguration();
     error AuthorizationExpired();
     error InvalidSignature();
@@ -36,6 +37,7 @@ contract EchoAccountFactoryZ is EIP712 {
         address owner,
         address entryPoint,
         address bridge,
+        address agentPolicyRegistry,
         bytes32 salt,
         bytes32 configHash,
         uint256 deadline
@@ -47,6 +49,7 @@ contract EchoAccountFactoryZ is EIP712 {
                     owner,
                     entryPoint,
                     bridge,
+                    agentPolicyRegistry,
                     salt,
                     configHash,
                     deadline
@@ -87,6 +90,7 @@ contract EchoAccountFactoryZ is EIP712 {
         address owner,
         address entryPoint,
         address bridge,
+        address agentPolicyRegistry,
         bytes32 salt,
         address[] calldata targets,
         bytes[] calldata calls,
@@ -95,6 +99,9 @@ contract EchoAccountFactoryZ is EIP712 {
     ) external returns (address account) {
         if (owner == address(0)) revert InvalidOwner();
         if (bridge.code.length == 0) revert InvalidBridge();
+        if (agentPolicyRegistry.code.length == 0) {
+            revert InvalidAgentPolicyRegistry();
+        }
         if (targets.length != 5 || calls.length != 5) {
             revert InvalidConfiguration();
         }
@@ -108,6 +115,7 @@ contract EchoAccountFactoryZ is EIP712 {
             owner,
             entryPoint,
             bridge,
+            agentPolicyRegistry,
             salt,
             configHash,
             deadline
@@ -124,6 +132,10 @@ contract EchoAccountFactoryZ is EIP712 {
                 bridge,
                 address(this)
             )
+        );
+
+        EchoSmartAccountZ(payable(account)).bindAgentPolicyRegistry(
+            agentPolicyRegistry
         );
 
         EchoSmartAccountZ(payable(account)).initialize(

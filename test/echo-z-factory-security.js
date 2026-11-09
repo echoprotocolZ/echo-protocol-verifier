@@ -4,9 +4,15 @@ const { ethers } = require("hardhat");
 
 describe("Echo Protocol Z factory authorization", function () {
   let owner, attacker, factory, bridgePlaceholder, salt, deadline;
+  let agentPolicyRegistry;
   let targets, calls, predicted, domain, types, message;
 
   beforeEach(async function () {
+    agentPolicyRegistry = await (
+      await ethers.getContractFactory("EchoAgentPolicyRegistryZ")
+    ).deploy();
+    await agentPolicyRegistry.waitForDeployment();
+
     [owner, attacker] = await ethers.getSigners();
 
     factory = await (
@@ -46,6 +52,7 @@ describe("Echo Protocol Z factory authorization", function () {
         { name: "owner", type: "address" },
         { name: "entryPoint", type: "address" },
         { name: "bridge", type: "address" },
+        { name: "agentPolicyRegistry", type: "address" },
         { name: "salt", type: "bytes32" },
         { name: "configHash", type: "bytes32" },
         { name: "deadline", type: "uint256" }
@@ -56,6 +63,7 @@ describe("Echo Protocol Z factory authorization", function () {
       owner: owner.address,
       entryPoint: ethers.ZeroAddress,
       bridge: await bridgePlaceholder.getAddress(),
+      agentPolicyRegistry: await agentPolicyRegistry.getAddress(),
       salt,
       configHash: await factory.configurationHash(targets, calls),
       deadline
@@ -67,6 +75,7 @@ describe("Echo Protocol Z factory authorization", function () {
       owner.address,
       ethers.ZeroAddress,
       await bridgePlaceholder.getAddress(),
+      await agentPolicyRegistry.getAddress(),
       salt,
       targets,
       calls,

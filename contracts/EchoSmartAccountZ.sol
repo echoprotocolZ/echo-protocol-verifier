@@ -8,6 +8,23 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
     address public immutable deploymentFactory;
     bool public initialized;
 
+    address public agentPolicyRegistry;
+    error InvalidAgentPolicyRegistry();
+    error AgentPolicyRegistryAlreadyBound();
+
+    function bindAgentPolicyRegistry(address registry_) external {
+        if (msg.sender != deploymentFactory) revert Unauthorized();
+        if (initialized || agentPolicyRegistry != address(0)) {
+            revert AgentPolicyRegistryAlreadyBound();
+        }
+        if (registry_ == address(0) || registry_.code.length == 0) {
+            revert InvalidAgentPolicyRegistry();
+        }
+
+        agentPolicyRegistry = registry_;
+    }
+
+
     event AccountInitialized(address indexed account);
 
     error OnlyDeploymentFactory();
@@ -229,6 +246,157 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
     /// @notice Updates geographic policy only after owner approval
     /// and successful V3/V4 proof authorization.
     /// @dev Existing V4 unrestricted administration remains disabled.
+
+    /// @dev Enforce account-scoped agent permissions before execution.
+    function _validateExecutionPolicy(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal view override {
+        if (!initialized || agentPolicyRegistry.code.length == 0) {
+            revert InvalidAgentPolicyRegistry();
+        }
+
+        (bool success, bytes memory response) =
+            agentPolicyRegistry.staticcall(
+                abi.encodeWithSignature(
+                    "validateExecution(address,address,address,uint256,bytes)",
+                    address(this),
+                    delegatee,
+                    target,
+                    value,
+                    data
+                )
+            );
+
+        if (!success || response.length != 32 ||
+            !abi.decode(response, (bool))) {
+            revert Unauthorized();
+        }
+    }
+
+
+    error InvalidAgentPolicyUpdate();
+
+    function _validateAgentPolicyUpdate(
+        address delegatee,
+        bytes calldata data
+    ) internal pure {
+        if (delegatee == address(0) || data.length < 4) {
+            revert InvalidAgentPolicyUpdate();
+        }
+
+        bytes4 selector = bytes4(data[:4]);
+
+        if (selector == bytes4(
+            keccak256("setAgentPolicy(address,uint256,uint64,bool)")
+        )) {
+            if (data.length != 132) revert InvalidAgentPolicyUpdate();
+
+            (address agent,,,) = abi.decode(
+                data[4:], (address,uint256,uint64,bool)
+            );
+
+            if (agent != delegatee) revert InvalidAgentPolicyUpdate();
+
+        } else if (selector == bytes4(
+            keccak256("setTargetPermission(address,address,bool)")
+        )) {
+            if (data.length != 100) revert InvalidAgentPolicyUpdate();
+
+            (address agent,,) = abi.decode(
+                data[4:], (address,address,bool)
+            );
+
+            if (agent != delegatee) revert InvalidAgentPolicyUpdate();
+
+        } else if (selector == bytes4(
+            keccak256("setSelectorPermission(address,address,bytes4,bool)")
+        )) {
+            if (data.length != 132) revert InvalidAgentPolicyUpdate();
+
+            (address agent,,,) = abi.decode(
+                data[4:], (address,address,bytes4,bool)
+            );
+
+            if (agent != delegatee) revert InvalidAgentPolicyUpdate();
+
+        } else {
+            revert InvalidAgentPolicyUpdate();
+        }
+    }
+
+
+    event AgentPolicyAdministrationExecuted(
+        address indexed agent,
+        bytes32 indexed dataHash,
+        uint256 nonceUsed
+    );
+
+
+    struct AgentPolicyProof {
+        uint[2] v3A;
+        uint[2][2] v3B;
+        uint[2] v3C;
+        uint[20] v3Signals;
+        uint[2] v4A;
+        uint[2][2] v4B;
+        uint[2] v4C;
+        uint[5] v4Signals;
+    }
+
+    function executeProofAuthorizedAgentPolicyUpdate(
+        IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        AgentPolicyProof calldata proof,
+        bytes calldata data
+    ) external nonReentrantExecution returns (bytes memory) {
+        if (!initialized || msg.sender != owner) revert Unauthorized();
+        if (checkpoint.account != address(this)) revert Unauthorized();
+        if (agentPolicyRegistry.code.length == 0) {
+            revert InvalidAgentPolicyRegistry();
+        }
+
+        _validateAgentPolicyUpdate(checkpoint.delegatee, data);
+
+        uint256 currentNonce = nonce;
+
+        bool authorized = authorizationBridge.authorize(
+            checkpoint,
+            signature,
+            proof.v3A,
+            proof.v3B,
+            proof.v3C,
+            proof.v3Signals,
+            proof.v4A,
+            proof.v4B,
+            proof.v4C,
+            proof.v4Signals,
+            agentPolicyRegistry,
+            0,
+            data,
+            currentNonce
+        );
+
+        if (!authorized) revert AuthorizationFailed();
+
+        nonce = currentNonce + 1;
+
+        (bool success, bytes memory output) =
+            agentPolicyRegistry.call(data);
+
+        if (!success) revert ExecutionFailed(output);
+
+        emit AgentPolicyAdministrationExecuted(
+            checkpoint.delegatee,
+            keccak256(data),
+            currentNonce
+        );
+
+        return output;
+    }
+
     function executeProofAuthorizedGeographicUpdate(
         IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
         bytes calldata signature,

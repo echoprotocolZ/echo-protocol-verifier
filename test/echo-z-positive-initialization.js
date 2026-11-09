@@ -133,6 +133,7 @@ describe("Echo Protocol Z positive initialization", function () {
         { name: "owner", type: "address" },
         { name: "entryPoint", type: "address" },
         { name: "bridge", type: "address" },
+        { name: "agentPolicyRegistry", type: "address" },
         { name: "salt", type: "bytes32" },
         { name: "configHash", type: "bytes32" },
         { name: "deadline", type: "uint256" }
@@ -143,6 +144,7 @@ describe("Echo Protocol Z positive initialization", function () {
       owner: owner.address,
       entryPoint: ethers.ZeroAddress,
       bridge: v4Bridge.target,
+      agentPolicyRegistry: v4Bridge.target,
       salt,
       configHash,
       deadline
@@ -202,6 +204,7 @@ describe("Echo Protocol Z positive initialization", function () {
         owner: owner.address,
         entryPoint: ethers.ZeroAddress,
         bridge: v4Bridge.target,
+      agentPolicyRegistry: v4Bridge.target,
         salt: badSalt,
         configHash: badHash,
         deadline
@@ -218,6 +221,7 @@ describe("Echo Protocol Z positive initialization", function () {
         const tx = await factory.createAccount(
           owner.address,
           ethers.ZeroAddress,
+          v4Bridge.target,
           v4Bridge.target,
           badSalt,
           targets,
@@ -285,6 +289,7 @@ describe("Echo Protocol Z positive initialization", function () {
         owner: owner.address,
         entryPoint: ethers.ZeroAddress,
         bridge: v4Bridge.target,
+      agentPolicyRegistry: v4Bridge.target,
         salt: badSalt,
         configHash: badHash,
         deadline
@@ -301,6 +306,7 @@ describe("Echo Protocol Z positive initialization", function () {
         const tx = await factory.createAccount(
           owner.address,
           ethers.ZeroAddress,
+          v4Bridge.target,
           v4Bridge.target,
           badSalt,
           targets,
@@ -324,6 +330,7 @@ describe("Echo Protocol Z positive initialization", function () {
       await factory.connect(outsider).createAccount(
         owner.address,
         ethers.ZeroAddress,
+        v4Bridge.target,
         v4Bridge.target,
         salt,
         targets,
@@ -416,6 +423,7 @@ describe("Echo Protocol Z positive initialization", function () {
       const tx = await factory.createAccount(
         owner.address,
         ethers.ZeroAddress,
+        v4Bridge.target,
         v4Bridge.target,
         salt,
         targets,
