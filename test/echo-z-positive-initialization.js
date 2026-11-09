@@ -739,6 +739,58 @@ describe("Echo Protocol Z positive initialization", function () {
         data
       ];
 
+
+      // A valid proof must not authorize modified calldata.
+      const tamperedData =
+        geographicPolicy.interface.encodeFunctionData(
+          "setGeographicPolicy",
+          [agent.address, {
+            ...zone,
+            maxLat: zone.maxLat + 1
+          }]
+        );
+
+      await assert.rejects(async () => {
+        const tamperedArgs = [...proofArgs];
+        tamperedArgs[tamperedArgs.length - 1] = tamperedData;
+
+        const tx = await account.connect(owner)
+          .executeProofAuthorizedGeographicUpdate(...tamperedArgs);
+        await tx.wait();
+      });
+
+      assert.equal(
+        await account.nonce(),
+        nonceBeforeProof,
+        "Tampered transaction changed the nonce"
+      );
+
+      console.log("REJECTED: modified administrative calldata");
+
+      // Append trailing ABI data without changing the decoded zone.
+      // The policy safeguard should still see the approved zone,
+      // but the bridge must reject the changed calldata hash.
+      const paddedData = data + "00".repeat(32);
+
+      await assert.rejects(async () => {
+        const paddedArgs = [...proofArgs];
+        paddedArgs[paddedArgs.length - 1] = paddedData;
+
+        const tx = await account.connect(owner)
+          .executeProofAuthorizedGeographicUpdate(...paddedArgs);
+        await tx.wait();
+      });
+
+      assert.equal(
+        await account.nonce(),
+        nonceBeforeProof,
+        "Padded calldata changed the nonce"
+      );
+
+      console.log("REJECTED: same-zone calldata hash tampering");
+
+
+
       await (
         await account.connect(owner)
           .executeProofAuthorizedGeographicUpdate(...proofArgs)
