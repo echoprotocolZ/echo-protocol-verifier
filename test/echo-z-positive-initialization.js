@@ -375,8 +375,29 @@ describe("Echo Protocol Z positive initialization", function () {
       agent.address
     );
 
-    // Confirm that the policy lookup succeeds.
-    assert.ok(storedZone !== undefined);
+    // Confirm the deployed account's geographic policy is active.
+    expect(storedZone.enabled).to.equal(true);
+    expect(storedZone.zoneHash).to.equal(zoneHash);
+
+    // Verify the registry accepts exactly the signed zone hash.
+    expect(
+      await geographicPolicy.validateApprovedZone(
+        predicted,
+        agent.address,
+        zoneHash
+      )
+    ).to.equal(true);
+
+    // Verify the registry rejects a different geographic zone.
+    await assert.rejects(async () => {
+      await geographicPolicy.validateApprovedZone(
+        predicted,
+        agent.address,
+        ethers.id("UNAUTHORIZED_GEOGRAPHIC_ZONE")
+      );
+    });
+
+    console.log("Geographic policy integrity verified.");
 
     await assert.rejects(async () => {
       const tx = await account.connect(outsider).initialize(
