@@ -118,6 +118,13 @@ contract EchoSmartAccountV4 {
             target == policyRegistry
         ) revert InvalidAddress();
 
+        _validateExecutionPolicy(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
+
         uint256 currentNonce = nonce;
 
         bool authorized = authorizationBridge.authorize(
@@ -136,6 +143,21 @@ contract EchoSmartAccountV4 {
 
         emit Executed(target, value, data, currentNonce);
         return output;
+    }
+
+
+    /// @dev Extension point for stricter account-specific
+    /// execution policies. Legacy V4 behavior is unchanged.
+    function _validateExecutionPolicy(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal view virtual {
+        delegatee;
+        target;
+        value;
+        data;
     }
 
     /// @notice Disabled until proof-bound administration is implemented.
