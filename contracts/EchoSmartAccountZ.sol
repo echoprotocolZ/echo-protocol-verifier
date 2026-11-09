@@ -254,6 +254,8 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         uint256 value,
         bytes calldata data
     ) internal view override {
+        if (target == agentPolicyRegistry) revert Unauthorized();
+
         if (!initialized || agentPolicyRegistry.code.length == 0) {
             revert InvalidAgentPolicyRegistry();
         }
