@@ -725,6 +725,61 @@ describe("Echo Protocol Z positive initialization", function () {
 
     const [a, b, c, signals] = JSON.parse(`[${calldata}]`);
 
+    // Verify genuine proofs against the Solidity contracts,
+    // then confirm modified public signals are rejected.
+    const onChainV3 = await (
+      await ethers.getContractFactory("EchoAuthorizationVerifierV3")
+    ).deploy();
+
+    const onChainV4 = await (
+      await ethers.getContractFactory("EchoGeographicBoundVerifierV4")
+    ).deploy();
+
+    await onChainV3.waitForDeployment();
+    await onChainV4.waitForDeployment();
+
+    for (const [name, verifier, proofArgs] of [
+      ["V3", onChainV3, [a, b, c, signals]],
+      ["V4", onChainV4, [v4A, v4B, v4C, v4Signals]]
+    ]) {
+      const [proofA, proofB, proofC, proofSignals] = proofArgs;
+
+      assert.equal(
+        await verifier.verifyProof(
+          proofA, proofB, proofC, proofSignals
+        ),
+        true,
+        `${name} Solidity verifier rejected a genuine proof`
+      );
+
+      const tamperedSignals = [...proofSignals];
+      tamperedSignals[0] =
+        (BigInt(tamperedSignals[0]) + 1n).toString();
+
+      let rejected = false;
+
+      try {
+        rejected = !await verifier.verifyProof(
+          proofA, proofB, proofC, tamperedSignals
+        );
+      } catch {
+        rejected = true;
+      }
+
+      assert.equal(
+        rejected,
+        true,
+        `${name} Solidity verifier accepted tampered signals`
+      );
+
+      console.log(
+        `PASS: ${name} Solidity verifier rejects tampered signals`
+      );
+    }
+
+    console.log("ON-CHAIN VERIFIER INTEGRITY PASSED");
+
+
       const nonceBeforeProof = await account.nonce();
 
       const proofArgs = [
@@ -1124,6 +1179,61 @@ describe("Echo Protocol Z positive initialization", function () {
     );
 
     const [a, b, c, signals] = JSON.parse(`[${calldata}]`);
+
+    // Verify genuine proofs against the Solidity contracts,
+    // then confirm modified public signals are rejected.
+    const onChainV3 = await (
+      await ethers.getContractFactory("EchoAuthorizationVerifierV3")
+    ).deploy();
+
+    const onChainV4 = await (
+      await ethers.getContractFactory("EchoGeographicBoundVerifierV4")
+    ).deploy();
+
+    await onChainV3.waitForDeployment();
+    await onChainV4.waitForDeployment();
+
+    for (const [name, verifier, proofArgs] of [
+      ["V3", onChainV3, [a, b, c, signals]],
+      ["V4", onChainV4, [v4A, v4B, v4C, v4Signals]]
+    ]) {
+      const [proofA, proofB, proofC, proofSignals] = proofArgs;
+
+      assert.equal(
+        await verifier.verifyProof(
+          proofA, proofB, proofC, proofSignals
+        ),
+        true,
+        `${name} Solidity verifier rejected a genuine proof`
+      );
+
+      const tamperedSignals = [...proofSignals];
+      tamperedSignals[0] =
+        (BigInt(tamperedSignals[0]) + 1n).toString();
+
+      let rejected = false;
+
+      try {
+        rejected = !await verifier.verifyProof(
+          proofA, proofB, proofC, tamperedSignals
+        );
+      } catch {
+        rejected = true;
+      }
+
+      assert.equal(
+        rejected,
+        true,
+        `${name} Solidity verifier accepted tampered signals`
+      );
+
+      console.log(
+        `PASS: ${name} Solidity verifier rejects tampered signals`
+      );
+    }
+
+    console.log("ON-CHAIN VERIFIER INTEGRITY PASSED");
+
 
 
       const migrationArgs = [
