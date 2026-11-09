@@ -1882,6 +1882,272 @@ describe("Echo Protocol Z positive initialization", function () {
       console.log("REPLAY REJECTED: zone migration proof");
     }
 
+
+    // MILESTONE 6: REAL PROOF-AUTHORIZED STAKING
+    {
+      const { buildAuthorization } =
+        require("../scripts/zk/echo-z-authorization");
+
+      const activeAttestation =
+        await registry.attestationPolicies(
+          account.target,
+          agent.address
+        );
+
+      const activeZoneHash = activeAttestation[0];
+
+      const stakingZone = {
+        ...zone,
+        maxLat: BigInt(zone.maxLat) + 1n
+      };
+
+      const block = await ethers.provider.getBlock("latest");
+      const stakingDeadline = BigInt(block.timestamp) + 7200n;
+
+      async function authorizePolicyUpdate(data) {
+        const auth = await buildAuthorization({
+          ethers,
+          account,
+          agent,
+          validator,
+          registry,
+          target: agentPolicyRegistry.target,
+          value: 0n,
+          data,
+          zone: stakingZone,
+          zoneHash: activeZoneHash,
+          deadline: stakingDeadline
+        });
+
+        const tx = await account.connect(owner)
+          .executeProofAuthorizedAgentPolicyUpdate(
+            auth.checkpoint,
+            auth.signature,
+            auth.proof,
+            data
+          );
+
+        await tx.wait();
+
+        assert.equal(
+          await account.nonce(),
+          auth.nonce + 1n,
+          "Policy update must advance nonce exactly once"
+        );
+      }
+
+      // Permission 1: approve the ECHO token target.
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setTargetPermission",
+          [agent.address, echoTokenMock.target, true]
+        )
+      );
+
+      // Permission 2: approve the ECHO token approve() selector.
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setSelectorPermission",
+          [
+            agent.address,
+            echoTokenMock.target,
+            echoTokenMock.interface.getFunction("approve").selector,
+            true
+          ]
+        )
+      );
+
+      // Permission 3: approve the staking contract target.
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setTargetPermission",
+          [agent.address, echoStakingMock.target, true]
+        )
+      );
+
+      // Permission 4: approve the staking stake() selector.
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setSelectorPermission",
+          [
+            agent.address,
+            echoStakingMock.target,
+            echoStakingMock.interface.getFunction("stake").selector,
+            true
+          ]
+        )
+      );
+
+      assert.equal(
+        await agentPolicyRegistry.approvedTargets(
+          account.target, agent.address, echoTokenMock.target
+        ),
+        true
+      );
+
+      assert.equal(
+        await agentPolicyRegistry.approvedTargets(
+          account.target, agent.address, echoStakingMock.target
+        ),
+        true
+      );
+
+      console.log("PASS: Four proof-authorized staking permissions");
+
+      const stakeAmount = ethers.parseEther("1000");
+
+      // Generate a fresh proof for token approval.
+      const approveData =
+        echoTokenMock.interface.encodeFunctionData(
+          "approve",
+          [echoStakingMock.target, stakeAmount]
+        );
+
+      const approveAuth = await buildAuthorization({
+        ethers,
+        account,
+        agent,
+        validator,
+        registry,
+        target: echoTokenMock.target,
+        value: 0n,
+        data: approveData,
+        zone: stakingZone,
+        zoneHash: activeZoneHash,
+        deadline: stakingDeadline
+      });
+
+      const approveTx = await account.connect(agent)
+        .executeAuthorized(
+          approveAuth.checkpoint,
+          approveAuth.signature,
+          approveAuth.proof.v3A,
+          approveAuth.proof.v3B,
+          approveAuth.proof.v3C,
+          approveAuth.proof.v3Signals,
+          approveAuth.proof.v4A,
+          approveAuth.proof.v4B,
+          approveAuth.proof.v4C,
+          approveAuth.proof.v4Signals,
+          echoTokenMock.target,
+          0,
+          approveData
+        );
+
+      await approveTx.wait();
+
+      assert.equal(
+        await echoTokenMock.allowance(
+          account.target,
+          echoStakingMock.target
+        ),
+        stakeAmount
+      );
+
+      assert.equal(
+        await account.nonce(),
+        approveAuth.nonce + 1n
+      );
+
+      console.log("PASS: Z account authorized ECHO approval");
+
+      // Generate an entirely new proof for staking.
+      const stakeData =
+        echoStakingMock.interface.encodeFunctionData(
+          "stake",
+          [stakeAmount]
+        );
+
+      const stakeAuth = await buildAuthorization({
+        ethers,
+        account,
+        agent,
+        validator,
+        registry,
+        target: echoStakingMock.target,
+        value: 0n,
+        data: stakeData,
+        zone: stakingZone,
+        zoneHash: activeZoneHash,
+        deadline: stakingDeadline
+      });
+
+      const stakeTx = await account.connect(agent)
+        .executeAuthorized(
+          stakeAuth.checkpoint,
+          stakeAuth.signature,
+          stakeAuth.proof.v3A,
+          stakeAuth.proof.v3B,
+          stakeAuth.proof.v3C,
+          stakeAuth.proof.v3Signals,
+          stakeAuth.proof.v4A,
+          stakeAuth.proof.v4B,
+          stakeAuth.proof.v4C,
+          stakeAuth.proof.v4Signals,
+          echoStakingMock.target,
+          0,
+          stakeData
+        );
+
+      await stakeTx.wait();
+
+      assert.equal(
+        await echoStakingMock.getValidatorStake(account.target),
+        stakeAmount
+      );
+
+      assert.equal(
+        await echoTokenMock.balanceOf(account.target),
+        ethers.parseEther("4000")
+      );
+
+      assert.equal(
+        await echoTokenMock.balanceOf(echoStakingMock.target),
+        stakeAmount
+      );
+
+      assert.equal(
+        await account.nonce(),
+        stakeAuth.nonce + 1n
+      );
+
+      console.log("PASS: 1,000 ECHO staked through Echo Z");
+      console.log("PASS: Token balances verified");
+      console.log("PASS: Staking nonce advanced exactly once");
+
+      // Replaying the consumed proof must fail.
+      await assert.rejects(async () => {
+        const tx = await account.connect(agent)
+          .executeAuthorized(
+            stakeAuth.checkpoint,
+            stakeAuth.signature,
+            stakeAuth.proof.v3A,
+            stakeAuth.proof.v3B,
+            stakeAuth.proof.v3C,
+            stakeAuth.proof.v3Signals,
+            stakeAuth.proof.v4A,
+            stakeAuth.proof.v4B,
+            stakeAuth.proof.v4C,
+            stakeAuth.proof.v4Signals,
+            echoStakingMock.target,
+            0,
+            stakeData
+          );
+        await tx.wait();
+      });
+
+      assert.equal(
+        await account.nonce(),
+        stakeAuth.nonce + 1n
+      );
+
+      console.log("PASS: Staking proof replay rejected");
+    }
+
+
+    // Account-scoped permissions, token approval, and staking
+    // will be tested here using fresh V3/V4 proofs.
+
     console.log("Z account deployed:", predicted);
     console.log("All five bootstrap calls succeeded.");
     console.log("Unauthorized reinitialization rejected.");
