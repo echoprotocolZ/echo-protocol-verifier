@@ -150,47 +150,12 @@ contract EchoSmartAccountV4 {
 
     /// @notice Owner-only geographic policy administration.
     /// @dev Resolves the policy registry through immutable V4 dependencies.
+    /// @notice Disabled until proof-bound geographic administration is implemented.
     function executeGeographicAdministration(
         bytes calldata data
     ) external nonReentrantExecution returns (bytes memory result) {
-        if (msg.sender != owner) revert Unauthorized();
-
-        address dualVerifier = authorizationBridge.dualProofVerifier();
-
-        (bool ok, bytes memory response) = dualVerifier.staticcall(
-            abi.encodeWithSignature("v4Gateway()")
-        );
-        if (!ok || response.length != 32) revert InvalidAddress();
-
-        address gateway = abi.decode(response, (address));
-
-        (ok, response) = gateway.staticcall(
-            abi.encodeWithSignature("policyRegistry()")
-        );
-        if (!ok || response.length != 32) revert InvalidAddress();
-
-        address policyRegistry = abi.decode(response, (address));
-        if (policyRegistry.code.length == 0) revert InvalidAddress();
-
-        if (data.length < 4) revert Unauthorized();
-
-        bytes4 selector = bytes4(data[:4]);
-
-        bytes4 setPolicy = bytes4(
-            keccak256("setGeographicPolicy(address,(uint32,uint32,uint32,uint32))")
-        );
-        bytes4 disablePolicy = bytes4(
-            keccak256("disableGeographicPolicy(address)")
-        );
-
-        if (selector != setPolicy && selector != disablePolicy) {
-            revert Unauthorized();
-        }
-
-        (bool success, bytes memory output) = policyRegistry.call(data);
-        if (!success) revert ExecutionFailed(output);
-
-        return output;
+        data;
+        revert Unauthorized();
     }
 
     function setEntryPoint(address newEntryPoint) external {
@@ -199,20 +164,12 @@ contract EchoSmartAccountV4 {
     }
 
     function transferOwnership(address newOwner) external {
-        if (msg.sender != owner || newOwner == address(0)) revert Unauthorized();
-        pendingOwner = newOwner;
-        emit OwnershipTransferStarted(owner, newOwner);
+        newOwner;
+        revert Unauthorized();
     }
 
     function acceptOwnership() external {
-        if (msg.sender != pendingOwner || pendingOwner == address(0))
-            revert Unauthorized();
-
-        address previousOwner = owner;
-        owner = pendingOwner;
-        pendingOwner = address(0);
-
-        emit OwnershipTransferred(previousOwner, owner);
+        revert Unauthorized();
     }
 
     receive() external payable {}
