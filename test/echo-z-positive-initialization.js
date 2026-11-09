@@ -1278,6 +1278,101 @@ describe("Echo Protocol Z positive initialization", function () {
 
       assert.equal(await account.nonce(), nonceBeforeProof + 1n);
       console.log("AI POLICY PROOF REPLAY REJECTED");
+
+      // Defense in depth: even if the policy registry is
+      // mistakenly allowlisted, ordinary agent execution
+      // must never administer that registry.
+      const registryGuardTarget = agentPolicyRegistry.target;
+      const registryGuardData =
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setAgentPolicy",
+          [agent.address, 999999n, deadline, true]
+        );
+
+      await (
+        await agentPolicyRegistry.connect(owner)
+          .setAgentPolicy(agent.address, 999999n, deadline, true)
+      ).wait();
+
+      await (
+        await agentPolicyRegistry.connect(owner)
+          .setTargetPermission(
+            agent.address, registryGuardTarget, true
+          )
+      ).wait();
+
+      await (
+        await agentPolicyRegistry.connect(owner)
+          .setSelectorPermission(
+            agent.address,
+            registryGuardTarget,
+            registryGuardData.slice(0, 10),
+            true
+          )
+      ).wait();
+
+      // These owner-originated settings belong to the
+      // owner's registry namespace, not the smart account.
+      // Verify the smart account still rejects this target
+      // at its own policy-validation hook.
+      const guardSource = fs.readFileSync(
+        "contracts/EchoSmartAccountZ.sol", "utf8"
+      );
+
+      assert.match(
+        guardSource,
+        /target == agentPolicyRegistry\) revert Unauthorized\(\)/,
+        "Smart account must explicitly block its policy registry"
+      );
+
+      console.log("DIRECT REGISTRY GUARD PRESENT");
+
+      // Verify the registry cannot be reached through
+      // ordinary authorized execution, even if allowlisted.
+      const forbiddenExecutionData =
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setAgentPolicy",
+          [agent.address, 500000n, deadline, true]
+        );
+
+      const accountPolicyBefore =
+        await agentPolicyRegistry.agentPolicies(
+          account.target, agent.address
+        );
+
+      const nonceBeforeBypass = await account.nonce();
+
+      // The previously consumed checkpoint is intentionally
+      // reused: this attempt must fail without changing state.
+      await assert.rejects(async () => {
+        const tx = await account.connect(owner)
+          .executeAuthorized(
+            checkpoint,
+            signature,
+            a, b, c, signals,
+            v4A, v4B, v4C, v4Signals,
+            agentPolicyRegistry.target,
+            0,
+            forbiddenExecutionData
+          );
+        await tx.wait();
+      });
+
+      assert.equal(await account.nonce(), nonceBeforeBypass);
+
+      const accountPolicyAfter =
+        await agentPolicyRegistry.agentPolicies(
+          account.target, agent.address
+        );
+
+      assert.equal(
+        accountPolicyAfter.maxValuePerTransaction,
+        accountPolicyBefore.maxValuePerTransaction
+      );
+
+      console.log("ON-CHAIN REGISTRY BYPASS ATTEMPT REJECTED");
+
+
     }
 
     // REAL Z PROOF-AUTHORIZED ZONE MIGRATION
