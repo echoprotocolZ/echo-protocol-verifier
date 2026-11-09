@@ -1168,6 +1168,93 @@ describe("Echo Protocol Z positive initialization", function () {
 
       console.log("REJECTED: modified migration destination");
 
+
+      // ATOMIC ROLLBACK SECURITY REGRESSION
+      // Force the second registry update to revert after
+      // the first registry update has been attempted.
+      const originalGeographicCode =
+        await ethers.provider.getCode(geographicPolicy.target);
+
+      const revertFactory =
+        await ethers.getContractFactory("EchoAlwaysRevertTest");
+
+      const revertContract = await revertFactory.deploy();
+      await revertContract.waitForDeployment();
+
+      const revertingCode =
+        await ethers.provider.getCode(revertContract.target);
+
+      const attestationBeforeFailure =
+        await registry.attestationPolicies(
+          account.target,
+          agent.address
+        );
+
+      const nonceBeforeFailure = await account.nonce();
+
+      try {
+        await ethers.provider.send("hardhat_setCode", [
+          geographicPolicy.target,
+          revertingCode
+        ]);
+
+        await assert.rejects(async () => {
+          const tx = await account.connect(owner)
+            .executeProofAuthorizedZoneMigration(...migrationArgs);
+          await tx.wait();
+        });
+
+        assert.equal(
+          await account.nonce(),
+          nonceBeforeFailure,
+          "Failed migration changed the account nonce"
+        );
+
+        const attestationAfterFailure =
+          await registry.attestationPolicies(
+            account.target,
+            agent.address
+          );
+
+        for (let i = 0; i < 5; i++) {
+          assert.equal(
+            attestationAfterFailure[i],
+            attestationBeforeFailure[i],
+            "Failed migration changed attestation policy field " + i
+          );
+        }
+
+        console.log("ATOMIC ROLLBACK VERIFIED");
+        console.log("Failed migration preserved nonce and attestation policy");
+      } finally {
+        // Restore the actual geographic registry before
+        // checking whether the same proof is still usable.
+        await ethers.provider.send("hardhat_setCode", [
+          geographicPolicy.target,
+          originalGeographicCode
+        ]);
+      }
+
+      const geographicAfterFailure =
+        await geographicPolicy.getGeographicPolicy(
+          account.target,
+          agent.address
+        );
+
+      assert.equal(
+        geographicAfterFailure.zoneHash,
+        oldZoneHash,
+        "Failed migration changed geographic policy"
+      );
+
+      assert.equal(
+        geographicAfterFailure.enabled,
+        true
+      );
+
+      console.log("Failed migration preserved geographic policy");
+      console.log("Retrying the same proof after rollback");
+
       await (
         await account.connect(owner)
           .executeProofAuthorizedZoneMigration(...migrationArgs)
