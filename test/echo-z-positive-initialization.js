@@ -767,27 +767,49 @@ describe("Echo Protocol Z positive initialization", function () {
 
       console.log("REJECTED: modified administrative calldata");
 
-      // Append trailing ABI data without changing the decoded zone.
-      // The policy safeguard should still see the approved zone,
-      // but the bridge must reject the changed calldata hash.
+
+      // Keep the decoded geographic policy unchanged while
+      // modifying the exact calldata bytes.
       const paddedData = data + "00".repeat(32);
 
-      await assert.rejects(async () => {
-        const paddedArgs = [...proofArgs];
-        paddedArgs[paddedArgs.length - 1] = paddedData;
+      const paddedArgs = [...proofArgs];
+      paddedArgs[paddedArgs.length - 1] = paddedData;
 
+      const expectedError =
+        v4Bridge.interface.getError("InvalidTransaction").selector;
+
+      let rejection;
+      try {
         const tx = await account.connect(owner)
           .executeProofAuthorizedGeographicUpdate(...paddedArgs);
         await tx.wait();
-      });
+      } catch (error) {
+        rejection = error;
+      }
+
+      assert.ok(rejection, "Padded calldata must revert");
+
+      const revertData =
+        rejection.data ??
+        rejection.error?.data ??
+        rejection.info?.error?.data;
+
+      assert.equal(
+        revertData,
+        expectedError,
+        "Expected bridge InvalidTransaction() rejection"
+      );
 
       assert.equal(
         await account.nonce(),
         nonceBeforeProof,
-        "Padded calldata changed the nonce"
+        "Rejected transaction changed account nonce"
       );
 
-      console.log("REJECTED: same-zone calldata hash tampering");
+      console.log(
+        "VERIFIED: bridge InvalidTransaction() rejected modified calldata"
+      );
+
 
 
 
