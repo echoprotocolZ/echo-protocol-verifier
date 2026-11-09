@@ -346,6 +346,26 @@ describe("Echo Protocol Z positive initialization", function () {
       predicted
     );
 
+    // Milestone 6: local ECHO token and staking fixtures.
+    const echoTokenMock = await deploy("EchoTokenTestMock");
+    const echoStakingMock = await deploy(
+      "EchoStakingTestMock",
+      echoTokenMock.target
+    );
+
+    await (
+      await echoTokenMock.mint(
+        account.target,
+        ethers.parseEther("5000")
+      )
+    ).wait();
+
+    expect(
+      await echoTokenMock.balanceOf(account.target)
+    ).to.equal(ethers.parseEther("5000"));
+
+    console.log("MILESTONE 6: Z account funded with local test ECHO");
+
     expect(await account.initialized()).to.equal(true);
     expect(await account.owner()).to.equal(owner.address);
     expect(await account.deploymentFactory()).to.equal(factory.target);
