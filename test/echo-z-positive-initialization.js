@@ -1,3 +1,4 @@
+const { generateProof } = require("../scripts/zk/echo-proof-generator");
 const snarkjs = require("snarkjs");
 const { buildPoseidon } = require("circomlibjs");
 const fs = require("fs");
@@ -575,11 +576,7 @@ describe("Echo Protocol Z positive initialization", function () {
     const {
       proof: v4Proof,
       publicSignals: v4PublicSignals
-    } = await snarkjs.groth16.fullProve(
-      v4Input,
-      `${v4Dir}/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm`,
-      `${v4Dir}/setup/EchoGeographicBoundV4_final.zkey`
-    );
+    } = await generateProof("v4", v4Input);
 
     const v4VerificationKey = JSON.parse(
       fs.readFileSync(
@@ -673,11 +670,10 @@ describe("Echo Protocol Z positive initialization", function () {
 
     const dir = "build/v3-timestamp-fixed";
 
-    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-      stringify(input),
-      `${dir}/EchoAuthorizationVerifierV3_js/EchoAuthorizationVerifierV3.wasm`,
-      `${dir}/EchoAuthorizationVerifierV3_final.zkey`
-    );
+    const {
+      proof,
+      publicSignals
+    } = await generateProof("v3", input);
 
     const vkey = JSON.parse(
       fs.readFileSync(`${dir}/verification_key.json`, "utf8")
@@ -980,11 +976,7 @@ describe("Echo Protocol Z positive initialization", function () {
     const {
       proof: v4Proof,
       publicSignals: v4PublicSignals
-    } = await snarkjs.groth16.fullProve(
-      v4Input,
-      `${v4Dir}/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm`,
-      `${v4Dir}/setup/EchoGeographicBoundV4_final.zkey`
-    );
+    } = await generateProof("v4", v4Input);
 
     const v4VerificationKey = JSON.parse(
       fs.readFileSync(
@@ -1078,11 +1070,10 @@ describe("Echo Protocol Z positive initialization", function () {
 
     const dir = "build/v3-timestamp-fixed";
 
-    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-      stringify(input),
-      `${dir}/EchoAuthorizationVerifierV3_js/EchoAuthorizationVerifierV3.wasm`,
-      `${dir}/EchoAuthorizationVerifierV3_final.zkey`
-    );
+    const {
+      proof,
+      publicSignals
+    } = await generateProof("v3", input);
 
     const vkey = JSON.parse(
       fs.readFileSync(`${dir}/verification_key.json`, "utf8")
