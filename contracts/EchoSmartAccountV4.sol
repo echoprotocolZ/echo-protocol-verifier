@@ -138,13 +138,73 @@ contract EchoSmartAccountV4 {
 
         nonce = currentNonce + 1;
 
-        (bool success, bytes memory output) = target.call{value: value}(data);
-        if (!success) revert ExecutionFailed(output);
+        _beforeAuthorizedExecution(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
+
+        bytes memory output = _performAuthorizedCall(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
+
+        _afterAuthorizedExecution(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
 
         emit Executed(target, value, data, currentNonce);
         return output;
     }
 
+
+
+    /// @dev Default V4 execution; Z may override for atomic staking.
+    function _performAuthorizedCall(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal virtual returns (bytes memory) {
+        delegatee;
+        (bool success, bytes memory output) = target.call{value: value}(data);
+        if (!success) revert ExecutionFailed(output);
+        return output;
+    }
+
+    /// @dev Extension point for stateful account-specific execution checks.
+    /// Legacy V4 behavior remains unchanged.
+    function _beforeAuthorizedExecution(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal virtual {
+        delegatee;
+        target;
+        value;
+        data;
+    }
+
+    /// @dev Post-execution extension point for account-specific
+    /// accounting. Legacy V4 behavior remains unchanged.
+    function _afterAuthorizedExecution(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal virtual {
+        delegatee;
+        target;
+        value;
+        data;
+    }
 
     /// @dev Extension point for stricter account-specific
     /// execution policies. Legacy V4 behavior is unchanged.

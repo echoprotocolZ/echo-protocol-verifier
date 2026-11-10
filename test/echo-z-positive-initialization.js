@@ -341,10 +341,67 @@ describe("Echo Protocol Z positive initialization", function () {
       )
     ).wait();
 
+
+    // MILESTONE 7: Unauthorized spending-budget administration.
+    // This check uses the deployed Z account below.
     const account = await ethers.getContractAt(
       "EchoSmartAccountZ",
       predicted
     );
+
+    // MILESTONE 7: Reject unauthorized budget configuration.
+    await assert.rejects(async () => {
+      const tx = await account.connect(outsider).setTokenSpendingBudget(
+        outsider.address,
+        agentPolicyRegistry.target,
+        ethers.parseEther("1000")
+      );
+      await tx.wait();
+    });
+
+    assert.equal(
+      await account.tokenSpendingBudgetConfigured(
+        outsider.address,
+        agentPolicyRegistry.target
+      ),
+      false
+    );
+
+    console.log("PASS: Unauthorized spending-budget update rejected");
+
+    // MILESTONE 7: An outsider cannot initiate proof-authorized
+    // spending-budget administration, even with empty proof inputs.
+    await assert.rejects(async () => {
+      const tx = await account.connect(outsider)
+        .executeProofAuthorizedSpendingBudgetUpdate(
+          {
+            account: await account.getAddress(),
+            delegatee: outsider.address,
+            zoneHash: ethers.ZeroHash,
+            checkpointCommitment: ethers.ZeroHash,
+            authorizationCommitment: ethers.ZeroHash,
+            timestamp: 0,
+            nonce: 0
+          },
+          "0x",
+          {
+            v3A: [0, 0],
+            v3B: [[0, 0], [0, 0]],
+            v3C: [0, 0],
+            v3Signals: Array(20).fill(0),
+            v4A: [0, 0],
+            v4B: [[0, 0], [0, 0]],
+            v4C: [0, 0],
+            v4Signals: Array(5).fill(0)
+          },
+          agentPolicyRegistry.target,
+          ethers.parseEther("1000")
+        );
+      await tx.wait();
+    });
+    console.log("PASS: Outsider budget administration rejected");
+
+
 
     // Milestone 6: local ECHO token and staking fixtures.
     const echoTokenMock = await deploy("EchoTokenTestMock");
@@ -2019,16 +2076,111 @@ describe("Echo Protocol Z positive initialization", function () {
       console.log("PASS: Proof-authorized 1,000 ECHO approval limit");
       console.log("PASS: Four proof-authorized staking permissions");
 
-      const stakeAmount = ethers.parseEther("1000");
 
-      // Generate a fresh proof for token approval.
-      const approveData =
+      // MILESTONE 7: Real dual-proof spending-budget administration.
+      const budgetAmount = ethers.parseEther("1000");
+
+      const budgetData = account.interface.encodeFunctionData(
+        "setTokenSpendingBudget",
+        [agent.address, echoTokenMock.target, budgetAmount]
+      );
+
+      const budgetAuth = await buildAuthorization({
+        ethers,
+        account,
+        agent,
+        validator,
+        registry,
+        target: account.target,
+        value: 0n,
+        data: budgetData,
+        zone: stakingZone,
+        zoneHash: activeZoneHash,
+        deadline: stakingDeadline
+      });
+
+      const budgetNonceBefore = await account.nonce();
+
+      // Modified budget amounts must not reuse the original proof.
+      await assert.rejects(async () => {
+        const tx = await account.connect(owner)
+          .executeProofAuthorizedSpendingBudgetUpdate(
+            budgetAuth.checkpoint,
+            budgetAuth.signature,
+            budgetAuth.proof,
+            echoTokenMock.target,
+            ethers.parseEther("2000")
+          );
+        await tx.wait();
+      });
+
+      assert.equal(await account.nonce(), budgetNonceBefore);
+
+      // Execute the genuine proof-authorized budget update.
+      await (
+        await account.connect(owner)
+          .executeProofAuthorizedSpendingBudgetUpdate(
+            budgetAuth.checkpoint,
+            budgetAuth.signature,
+            budgetAuth.proof,
+            echoTokenMock.target,
+            budgetAmount
+          )
+      ).wait();
+
+      assert.equal(
+        await account.tokenSpendingBudgets(
+          agent.address,
+          echoTokenMock.target
+        ),
+        budgetAmount
+      );
+
+      assert.equal(
+        await account.tokenSpendingBudgetConfigured(
+          agent.address,
+          echoTokenMock.target
+        ),
+        true
+      );
+
+      assert.equal(
+        await account.nonce(),
+        budgetNonceBefore + 1n
+      );
+
+      console.log("PASS: Real V3/V4 spending budget configured");
+
+      // The consumed proof must not be reusable.
+      await assert.rejects(async () => {
+        const tx = await account.connect(owner)
+          .executeProofAuthorizedSpendingBudgetUpdate(
+            budgetAuth.checkpoint,
+            budgetAuth.signature,
+            budgetAuth.proof,
+            echoTokenMock.target,
+            budgetAmount
+          );
+        await tx.wait();
+      });
+
+      assert.equal(
+        await account.nonce(),
+        budgetNonceBefore + 1n
+      );
+
+      console.log("PASS: Spending-budget proof replay rejected");
+
+      // MILESTONE 8 SECURITY REGRESSION:
+      // Standalone ERC-20 approval must be rejected even when
+      // the agent supplies a fresh V3/V4 authorization.
+      const forbiddenApproveData =
         echoTokenMock.interface.encodeFunctionData(
           "approve",
-          [echoStakingMock.target, stakeAmount]
+          [echoStakingMock.target, ethers.parseEther("1000")]
         );
 
-      const approveAuth = await buildAuthorization({
+      const forbiddenApproveAuth = await buildAuthorization({
         ethers,
         account,
         agent,
@@ -2036,47 +2188,45 @@ describe("Echo Protocol Z positive initialization", function () {
         registry,
         target: echoTokenMock.target,
         value: 0n,
-        data: approveData,
+        data: forbiddenApproveData,
         zone: stakingZone,
         zoneHash: activeZoneHash,
         deadline: stakingDeadline
       });
 
-      const approveTx = await account.connect(agent)
-        .executeAuthorized(
-          approveAuth.checkpoint,
-          approveAuth.signature,
-          approveAuth.proof.v3A,
-          approveAuth.proof.v3B,
-          approveAuth.proof.v3C,
-          approveAuth.proof.v3Signals,
-          approveAuth.proof.v4A,
-          approveAuth.proof.v4B,
-          approveAuth.proof.v4C,
-          approveAuth.proof.v4Signals,
+      const nonceBeforeForbiddenApproval = await account.nonce();
+
+      await assert.rejects(async () => {
+        const tx = await account.connect(agent).executeAuthorized(
+          forbiddenApproveAuth.checkpoint,
+          forbiddenApproveAuth.signature,
+          forbiddenApproveAuth.proof.v3A,
+          forbiddenApproveAuth.proof.v3B,
+          forbiddenApproveAuth.proof.v3C,
+          forbiddenApproveAuth.proof.v3Signals,
+          forbiddenApproveAuth.proof.v4A,
+          forbiddenApproveAuth.proof.v4B,
+          forbiddenApproveAuth.proof.v4C,
+          forbiddenApproveAuth.proof.v4Signals,
           echoTokenMock.target,
           0,
-          approveData
+          forbiddenApproveData
         );
+        await tx.wait();
+      }, /Unauthorized/);
 
-      await approveTx.wait();
-
+      assert.equal(await account.nonce(), nonceBeforeForbiddenApproval);
       assert.equal(
-        await echoTokenMock.allowance(
-          account.target,
-          echoStakingMock.target
-        ),
-        stakeAmount
+        await echoTokenMock.allowance(account.target, echoStakingMock.target),
+        0n
       );
 
-      assert.equal(
-        await account.nonce(),
-        approveAuth.nonce + 1n
-      );
+      console.log("PASS: Standalone ECHO approval rejected");
 
-      console.log("PASS: Z account authorized ECHO approval");
+      const stakeAmount = ethers.parseEther("1000");
 
-      // Generate an entirely new proof for staking.
+      // Milestone 8: staking authorization now performs
+      // approval, stake and allowance cleanup atomically.
       const stakeData =
         echoStakingMock.interface.encodeFunctionData(
           "stake",
@@ -2162,7 +2312,95 @@ describe("Echo Protocol Z positive initialization", function () {
         stakeAuth.nonce + 1n
       );
 
-      console.log("PASS: 1,000 ECHO staked through Echo Z");
+      assert.equal(
+        await echoTokenMock.allowance(
+          account.target,
+          echoStakingMock.target
+        ),
+        0n,
+        "Successful staking must leave zero allowance"
+      );
+
+      console.log("PASS: Atomic 1,000 ECHO stake with zero allowance");
+
+    assert.equal(
+      await account.tokenSpendingUsed(agent.address, echoTokenMock.target),
+      ethers.parseEther("1000"),
+      "Cumulative ECHO spending must equal 1,000"
+    );
+    console.log("PASS: Cumulative ECHO spending recorded");
+
+    // MILESTONE 8: Reject cumulative spending above 1,000 ECHO.
+    // No separate approval is required for the second attempt.
+    assert.equal(
+      await echoTokenMock.allowance(
+        account.target,
+        echoStakingMock.target
+      ),
+      0n,
+      "Atomic staking must leave zero allowance"
+    );
+
+    const secondStakeAuth = await buildAuthorization({
+      ethers, account, agent, validator, registry,
+      target: echoStakingMock.target,
+      value: 0n,
+      data: stakeData,
+      zone: stakingZone,
+      zoneHash: activeZoneHash,
+      deadline: stakingDeadline
+    });
+
+    const nonceBeforeExcess = await account.nonce();
+    const usedBeforeExcess = await account.tokenSpendingUsed(
+      agent.address, echoTokenMock.target
+    );
+    const balanceBeforeExcess = await echoTokenMock.balanceOf(account.target);
+    const stakeBeforeExcess = await echoStakingMock.getValidatorStake(
+      account.target
+    );
+    const allowanceBeforeExcess = await echoTokenMock.allowance(
+      account.target, echoStakingMock.target
+    );
+
+    await assert.rejects(async () => {
+      const tx = await account.connect(agent).executeAuthorized(
+        secondStakeAuth.checkpoint,
+        secondStakeAuth.signature,
+        secondStakeAuth.proof.v3A,
+        secondStakeAuth.proof.v3B,
+        secondStakeAuth.proof.v3C,
+        secondStakeAuth.proof.v3Signals,
+        secondStakeAuth.proof.v4A,
+        secondStakeAuth.proof.v4B,
+        secondStakeAuth.proof.v4C,
+        secondStakeAuth.proof.v4Signals,
+        echoStakingMock.target, 0, stakeData
+      );
+      await tx.wait();
+    }, /SpendingBudgetExceeded/);
+
+    assert.equal(await account.nonce(), nonceBeforeExcess);
+    assert.equal(
+      await account.tokenSpendingUsed(agent.address, echoTokenMock.target),
+      usedBeforeExcess
+    );
+    assert.equal(
+      await echoTokenMock.balanceOf(account.target),
+      balanceBeforeExcess
+    );
+    assert.equal(
+      await echoStakingMock.getValidatorStake(account.target),
+      stakeBeforeExcess
+    );
+    assert.equal(
+      await echoTokenMock.allowance(account.target, echoStakingMock.target),
+      allowanceBeforeExcess
+    );
+
+    console.log("PASS: Over-budget stake rejected with atomic rollback");
+
+
       console.log("PASS: Token balances verified");
       console.log("PASS: Staking nonce advanced exactly once");
 
@@ -2189,7 +2427,8 @@ describe("Echo Protocol Z positive initialization", function () {
 
       assert.equal(
         await account.nonce(),
-        stakeAuth.nonce + 1n
+        nonceBeforeExcess,
+        "Replayed staking proof must not advance nonce"
       );
 
       console.log("PASS: Staking proof replay rejected");

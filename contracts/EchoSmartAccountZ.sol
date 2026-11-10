@@ -9,6 +9,243 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
     bool public initialized;
 
     address public agentPolicyRegistry;
+
+    // Cumulative ERC-20 spending accounting.
+    // Enforcement will be implemented separately.
+    mapping(address => mapping(address => uint256))
+        public tokenSpendingBudgets;
+
+    mapping(address => mapping(address => uint256))
+        public tokenSpendingUsed;
+
+
+    mapping(address => mapping(address => bool))
+        public tokenSpendingBudgetConfigured;
+
+    error InvalidSpendingBudget();
+
+    event TokenSpendingBudgetUpdated(
+        address indexed agent,
+        address indexed token,
+        uint256 budget
+    );
+
+    function setTokenSpendingBudget(
+        address agent,
+        address token,
+        uint256 budget
+    ) external {
+        if (msg.sender != address(this)) revert Unauthorized();
+        if (agent == address(0) || token == address(0))
+            revert InvalidSpendingBudget();
+
+        if (
+            tokenSpendingBudgetConfigured[agent][token] &&
+            budget > tokenSpendingBudgets[agent][token]
+        ) revert InvalidSpendingBudget();
+
+        if (budget < tokenSpendingUsed[agent][token])
+            revert InvalidSpendingBudget();
+
+        address currentToken = monitoredToken[agent];
+        if (currentToken != address(0) && currentToken != token)
+            revert InvalidSpendingBudget();
+
+        monitoredToken[agent] = token;
+        tokenSpendingBudgets[agent][token] = budget;
+        tokenSpendingBudgetConfigured[agent][token] = true;
+
+        emit TokenSpendingBudgetUpdated(agent, token, budget);
+    }
+
+    event TokenSpendingRecorded(
+        address indexed agent,
+        address indexed token,
+        uint256 amount,
+        uint256 cumulativeAmount
+    );
+
+
+    // One monitored ERC-20 token per agent.
+    mapping(address => address) public monitoredToken;
+    mapping(address => uint256) private executionBalanceBefore;
+
+    error SpendingBudgetExceeded();
+    error TokenBalanceReadFailed();
+
+    function _tokenBalance(address token)
+        internal view returns (uint256)
+    {
+        (bool ok, bytes memory result) = token.staticcall(
+            abi.encodeWithSignature("balanceOf(address)", address(this))
+        );
+        if (!ok || result.length != 32)
+            revert TokenBalanceReadFailed();
+        return abi.decode(result, (uint256));
+    }
+
+    function _beforeAuthorizedExecution(
+        address delegatee,
+        address,
+        uint256,
+        bytes calldata
+    ) internal override {
+        address token = monitoredToken[delegatee];
+        if (token != address(0)) {
+            executionBalanceBefore[delegatee] = _tokenBalance(token);
+        }
+    }
+
+    function _afterAuthorizedExecution(
+        address delegatee,
+        address,
+        uint256,
+        bytes calldata
+    ) internal override {
+        address token = monitoredToken[delegatee];
+        if (token == address(0)) return;
+
+        uint256 beforeBalance = executionBalanceBefore[delegatee];
+        uint256 afterBalance = _tokenBalance(token);
+        if (afterBalance >= beforeBalance) return;
+
+        uint256 spent = beforeBalance - afterBalance;
+        uint256 used = tokenSpendingUsed[delegatee][token];
+        uint256 budget = tokenSpendingBudgets[delegatee][token];
+
+        if (spent > budget || used > budget - spent)
+            revert SpendingBudgetExceeded();
+
+        tokenSpendingUsed[delegatee][token] = used + spent;
+        emit TokenSpendingRecorded(delegatee, token, spent, used + spent);
+    }
+
+
+    function _performAuthorizedCall(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal override returns (bytes memory) {
+        if (
+            value == 0 &&
+            data.length == 36 &&
+            bytes4(data[:4]) == bytes4(keccak256("stake(uint256)")) &&
+            monitoredToken[delegatee] != address(0)
+        ) {
+            return _executeAtomicStake(delegatee, target, data);
+        }
+
+        return super._performAuthorizedCall(
+            delegatee,
+            target,
+            value,
+            data
+        );
+    }
+
+    // Milestone 8: atomic, proof-authorized ECHO staking.
+    // The outer executeAuthorized() call provides V3/V4 verification,
+    // nonce handling, policy validation and budget accounting.
+    function _executeAtomicStake(
+        address delegatee,
+        address staking,
+        bytes calldata data
+    ) internal returns (bytes memory) {
+        address token = monitoredToken[delegatee];
+        if (token == address(0) || staking.code.length == 0)
+            revert Unauthorized();
+
+        if (data.length != 36 ||
+            bytes4(data[:4]) != bytes4(keccak256("stake(uint256)")))
+            revert Unauthorized();
+
+        uint256 amount = abi.decode(data[4:], (uint256));
+        if (amount == 0) revert Unauthorized();
+
+        // Require staking contract to identify the monitored token.
+        (bool tokenOk, bytes memory tokenResult) =
+            staking.staticcall(abi.encodeWithSignature("echoToken()"));
+
+        if (!tokenOk || tokenResult.length != 32 ||
+            abi.decode(tokenResult, (address)) != token)
+            revert Unauthorized();
+
+        // Reject pre-existing approval instead of silently inheriting it.
+        (bool allowanceOk, bytes memory allowanceResult) =
+            token.staticcall(
+                abi.encodeWithSignature(
+                    "allowance(address,address)",
+                    address(this),
+                    staking
+                )
+            );
+
+        if (!allowanceOk || allowanceResult.length != 32 ||
+            abi.decode(allowanceResult, (uint256)) != 0)
+            revert Unauthorized();
+
+        uint256 balanceBeforeStake = _tokenBalance(token);
+        if (balanceBeforeStake < amount) revert Unauthorized();
+
+        (bool approved, bytes memory approveResult) =
+            token.call(
+                abi.encodeWithSignature(
+                    "approve(address,uint256)",
+                    staking,
+                    amount
+                )
+            );
+
+        if (!approved ||
+            (approveResult.length != 0 &&
+             (approveResult.length != 32 ||
+              !abi.decode(approveResult, (bool)))))
+            revert Unauthorized();
+
+        (bool success, bytes memory output) = staking.call(data);
+        if (!success) revert ExecutionFailed(output);
+
+        (bool cleared, bytes memory clearResult) =
+            token.call(
+                abi.encodeWithSignature(
+                    "approve(address,uint256)",
+                    staking,
+                    0
+                )
+            );
+
+        if (!cleared ||
+            (clearResult.length != 0 &&
+             (clearResult.length != 32 ||
+              !abi.decode(clearResult, (bool)))))
+            revert Unauthorized();
+
+        (bool finalOk, bytes memory finalResult) =
+            token.staticcall(
+                abi.encodeWithSignature(
+                    "allowance(address,address)",
+                    address(this),
+                    staking
+                )
+            );
+
+        if (
+            !finalOk ||
+            finalResult.length != 32 ||
+            abi.decode(finalResult, (uint256)) != 0
+        ) revert Unauthorized();
+
+        uint256 balanceAfterStake = _tokenBalance(token);
+
+        if (
+            balanceAfterStake > balanceBeforeStake ||
+            balanceBeforeStake - balanceAfterStake != amount
+        ) revert Unauthorized();
+
+        return output;
+    }
+
     error InvalidAgentPolicyRegistry();
     error AgentPolicyRegistryAlreadyBound();
 
@@ -256,6 +493,23 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
     ) internal view override {
         if (target == agentPolicyRegistry) revert Unauthorized();
 
+        // Milestone 8: prevent persistent ERC-20 approvals
+        // through the standard agent execution pathway.
+        address monitored = monitoredToken[delegatee];
+        if (
+            monitored != address(0) &&
+            target == monitored &&
+            data.length >= 4 &&
+            (
+                bytes4(data[:4]) == 0x095ea7b3 || // approve
+                bytes4(data[:4]) == 0x39509351 || // increaseAllowance
+                bytes4(data[:4]) == 0x23b872dd || // transferFrom
+                bytes4(data[:4]) == 0xd505accf    // permit (common EIP-2612)
+            )
+        ) {
+            revert Unauthorized();
+        }
+
         if (!initialized || agentPolicyRegistry.code.length == 0) {
             revert InvalidAgentPolicyRegistry();
         }
@@ -361,6 +615,55 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         uint[2][2] v4B;
         uint[2] v4C;
         uint[5] v4Signals;
+    }
+
+
+    function executeProofAuthorizedSpendingBudgetUpdate(
+        IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        AgentPolicyProof calldata proof,
+        address token,
+        uint256 budget
+    ) external nonReentrantExecution {
+        if (!initialized || msg.sender != owner) revert Unauthorized();
+        if (checkpoint.account != address(this)) revert Unauthorized();
+        if (checkpoint.delegatee == address(0) || token == address(0))
+            revert InvalidSpendingBudget();
+
+        bytes memory budgetData = abi.encodeWithSelector(
+            this.setTokenSpendingBudget.selector,
+            checkpoint.delegatee,
+            token,
+            budget
+        );
+
+        uint256 currentNonce = nonce;
+
+        bool authorized = authorizationBridge.authorize(
+            checkpoint,
+            signature,
+            proof.v3A,
+            proof.v3B,
+            proof.v3C,
+            proof.v3Signals,
+            proof.v4A,
+            proof.v4B,
+            proof.v4C,
+            proof.v4Signals,
+            address(this),
+            0,
+            budgetData,
+            currentNonce
+        );
+
+        if (!authorized) revert AuthorizationFailed();
+
+        nonce = currentNonce + 1;
+
+        (bool success, bytes memory output) =
+            address(this).call(budgetData);
+
+        if (!success) revert ExecutionFailed(output);
     }
 
     function executeProofAuthorizedAgentPolicyUpdate(
