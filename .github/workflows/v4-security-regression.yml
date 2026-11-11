@@ -1,0 +1,27 @@
+name: V4 Security Regression
+on:
+  push:
+    branches:
+      - security/v4-zero-trust-hardening
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v4-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Compile contracts
+        run: npx hardhat compile
+      - name: Run V4 admin and ownership regressions
+        run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
