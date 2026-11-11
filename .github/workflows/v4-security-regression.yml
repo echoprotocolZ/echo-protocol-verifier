@@ -42,6 +42,24 @@ jobs:
         run: npx hardhat compile
       - name: Generate disposable V3 circuit test artifacts
         run: node scripts/build-v3-test-artifacts.js
+      - name: Audit dependency vulnerabilities (non-blocking diagnostic)
+        continue-on-error: true
+        run: npm audit --json > npm-audit.json
+      - name: Check missing proof fixtures
+        shell: bash
+        run: |
+          echo "Checking proof-dependent test inputs; missing files remain blockers, not skipped tests."
+          for file in \
+            build/v3-bound/input-local.json \
+            build/v3-timestamp-fixed/proof.json \
+            build/v3-timestamp-fixed/solidity-calldata.txt \
+            build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey \
+            build/v4-geographic-bound/proofs/valid-proof.json \
+            build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm \
+            build/v2/EchoAuthorizationVerifierV2_js/EchoAuthorizationVerifierV2.wasm \
+            build/v2/proof.json; do
+            if test -f "$file"; then echo "PRESENT: $file"; else echo "MISSING: $file"; fi
+          done
       - name: Run all Hardhat tests and capture results
         shell: bash
         run: |
@@ -52,5 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: full-hardhat-results
-          path: full-hardhat-results.log
+          path: |
+            full-hardhat-results.log
+            npm-audit.json
           if-no-files-found: ignore
