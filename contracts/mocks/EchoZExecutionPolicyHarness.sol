@@ -14,4 +14,15 @@ contract EchoZExecutionPolicyHarness is EchoSmartAccountZ {
     ) external view {
         _validateExecutionPolicy(delegatee, target, value, data);
     }
+    /// @notice Isolates production balance hooks for an adversarial test.
+    /// @dev Bypasses proof verification ONLY in this local test harness.
+    function simulateAuthorizedCall(
+        address delegatee, address target, bytes calldata data
+    ) external returns (bytes memory result) {
+        _beforeAuthorizedExecution(delegatee, target, 0, data);
+        (bool ok, bytes memory output) = target.call(data);
+        if (!ok) revert ExecutionFailed(output);
+        _afterAuthorizedExecution(delegatee, target, 0, data);
+        return output;
+    }
 }
