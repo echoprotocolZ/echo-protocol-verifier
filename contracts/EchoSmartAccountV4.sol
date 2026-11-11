@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "./EchoV4AdminIntent.sol";
+
 interface IEchoAuthorizationBridgeForAccountV4 {
     struct SignedCheckpoint {
         address account;
@@ -218,6 +220,23 @@ contract EchoSmartAccountV4 {
         target;
         value;
         data;
+    }
+
+    /// @notice Preview the exact domain-separated ownership intent bytes.
+    /// @dev Read-only helper. This does not grant ownership or consume proofs.
+    ///      The future proof-authorized entrypoint must verify this payload
+    ///      through the bridge before changing pendingOwner.
+    function ownershipProposalIntent(
+        address successor,
+        uint256 deadline
+    ) external view returns (bytes memory) {
+        return EchoV4AdminIntent.ownershipProposalPayload(
+            address(this),
+            successor,
+            block.chainid,
+            nonce,
+            deadline
+        );
     }
 
     /// @notice Disabled until proof-bound administration is implemented.
