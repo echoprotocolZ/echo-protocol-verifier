@@ -117,6 +117,51 @@ describe("Echo Protocol Z factory authorization", function () {
     expect(await ethers.provider.getCode(predicted)).to.equal("0x");
   });
 
+
+  it("rejects modified deployment configuration", async function () {
+    const signature = await owner.signTypedData(domain, types, message);
+
+    const alteredCalls = [...calls];
+    alteredCalls[0] = "0x87654321";
+
+    await assert.rejects(
+      async () => factory.createAccount(
+        owner.address,
+        ethers.ZeroAddress,
+        await bridgePlaceholder.getAddress(),
+        await agentPolicyRegistry.getAddress(),
+        salt,
+        targets,
+        alteredCalls,
+        deadline,
+        signature
+      ),
+      /InvalidSignature/
+    );
+
+    expect(await ethers.provider.getCode(predicted)).to.equal("0x");
+  });
+
+  it("rejects reuse of a signature with a different salt", async function () {
+    const signature = await owner.signTypedData(domain, types, message);
+    const alteredSalt = ethers.id("altered-deployment-salt");
+
+    await assert.rejects(
+      async () => factory.createAccount(
+        owner.address,
+        ethers.ZeroAddress,
+        await bridgePlaceholder.getAddress(),
+        await agentPolicyRegistry.getAddress(),
+        alteredSalt,
+        targets,
+        calls,
+        deadline,
+        signature
+      ),
+      /InvalidSignature/
+    );
+  });
+
   it("rolls back deployment when initialization fails", async function () {
     const signature = await owner.signTypedData(domain, types, message);
 
