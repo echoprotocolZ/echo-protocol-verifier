@@ -120,4 +120,36 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     // the accounting boundary, NOT a proven exploit of executeAuthorized().
   });
 
+  it("does not count inbound monitored-token transfers as spending", async function () {
+    const [owner, agent, sender] = await ethers.getSigners();
+    const bridge = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await bridge.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const account = await (await ethers.getContractFactory("EchoZExecutionPolicyHarness")).deploy(
+      owner.address, bridge.target, owner.address
+    );
+    await account.waitForDeployment();
+    await (await account.fixtureSetBudget(agent.address, token.target, 5n)).wait();
+
+    // The account starts with zero tokens. A token.transfer invoked on the
+    // token contract sends from this account, not from the external sender.
+    // Instead, exercise an external target that transfers its own tokens to
+    // the account during the simulated call.
+    const spender = await (await ethers.getContractFactory("EchoIndirectTokenSpenderTestMock")).deploy();
+    await spender.waitForDeployment();
+    await (await token.transfer(spender.target, 10n)).wait();
+    // The spender's pull() requires allowance, so a failed call must not
+    // mutate accounting even when the monitored token is configured.
+    const data = spender.interface.encodeFunctionData("pull", [
+      token.target, sender.address, account.target, 1n
+    ]);
+    await assert.rejects(async () => {
+      const tx = await account.simulateAuthorizedCall(agent.address, spender.target, data);
+      await tx.wait();
+    });
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), 0n);
+    assert.equal(await token.balanceOf(account.target), 0n);
+  });
+
 });
