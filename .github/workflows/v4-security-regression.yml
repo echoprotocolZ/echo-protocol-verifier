@@ -68,22 +68,12 @@ jobs:
           mkdir -p build/v2 build/v4-geographic-bound
           npx --no-install circom2 EchoAuthorizationVerifierV2.circom --wasm -l node_modules -o build/v2
           npx --no-install circom2 circuits/v4/EchoGeographicBoundV4.circom --wasm -l node_modules -o build/v4-geographic-bound
-      - name: Check required artifact secrets
+      - name: Check decryption secret
         shell: bash
         env:
-          ARTIFACT_TOKEN: ${{ secrets.ECHO_CI_ARTIFACT_READ_TOKEN }}
           ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
         run: |
-          test -n "$ARTIFACT_TOKEN" || { echo "Missing ECHO_CI_ARTIFACT_READ_TOKEN"; exit 1; }
           test -n "$ARTIFACT_KEY" || { echo "Missing ECHO_CI_ARTIFACT_KEY"; exit 1; }
-      - name: Check out private encrypted proof artifacts
-        uses: actions/checkout@v4
-        with:
-          repository: echoprotocolZ/echo-ci-artifacts
-          ref: main
-          token: ${{ secrets.ECHO_CI_ARTIFACT_READ_TOKEN }}
-          path: .ci-private-artifacts
-          persist-credentials: false
       - name: Decrypt original proof artifacts
         shell: bash
         env:
@@ -91,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           openssl enc -d -aes-256-cbc -pbkdf2 \
-            -in .ci-private-artifacts/echo-ci-artifacts.tar.gz.enc \
+            -in .ci/echo-ci-artifacts.tar.gz.enc \
             -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
           test -f build/v2/verification_key.json
           test -f build/v3-timestamp-fixed/verification_key.json
