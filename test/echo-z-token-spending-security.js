@@ -108,4 +108,30 @@ describe("Echo Z token-spending security", function () {
       );
     }, "Excessive ECHO approval must be rejected");
   });
+  it("documents that an allowlisted unprotected ERC-20 transfer passes registry policy", async function () {
+    const [account, agent, recipient] = await ethers.getSigners();
+    const registry = await (await ethers.getContractFactory("EchoAgentPolicyRegistryZ")).deploy();
+    await registry.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const block = await ethers.provider.getBlock("latest");
+    await registry.connect(account).setAgentPolicy(agent.address, 0, BigInt(block.timestamp) + 3600n, true);
+    await registry.connect(account).setTargetPermission(agent.address, token.target, true);
+    await registry.connect(account).setSelectorPermission(
+      agent.address, token.target, token.interface.getFunction("transfer").selector, true
+    );
+    const transfer = token.interface.encodeFunctionData("transfer", [recipient.address, 1n]);
+
+    // This documents the registry permission boundary, not an end-to-end exploit.
+    assert.equal(
+      await registry.validateExecution(account.address, agent.address, token.target, 0, transfer),
+      true
+    );
+
+    await registry.connect(account).setProtectedToken(token.target, true);
+    await assert.rejects(
+      registry.validateExecution(account.address, agent.address, token.target, 0, transfer)
+    );
+  });
+
 });
