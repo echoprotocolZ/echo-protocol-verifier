@@ -25,3 +25,30 @@ jobs:
         run: npx hardhat compile
       - name: Run V4 admin and ownership regressions
         run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-account-admin-intent.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
+
+  full-suite:
+    name: Full Hardhat suite (diagnostic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Compile contracts
+        run: npx hardhat compile
+      - name: Run all Hardhat tests and capture results
+        shell: bash
+        run: |
+          set -o pipefail
+          npx hardhat test 2>&1 | tee full-hardhat-results.log
+      - name: Upload full-suite logs (including failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-hardhat-results
+          path: full-hardhat-results.log
+          if-no-files-found: ignore
