@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const assert = require("node:assert/strict");
 
 // Production V4 currently fails closed for administrative mutations.
 // These tests must be updated alongside any future proof-bound admin entrypoint.
@@ -17,16 +18,11 @@ describe("ECHO V4 administration fail-closed invariants", function () {
   it("rejects every disabled admin entrypoint even when called by the owner", async function () {
     const { owner, successor, registry, account } = await fixture();
     const beforeNonce = await account.nonce();
-    await expect(account.connect(owner).setEntryPoint(successor.address))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(owner).transferOwnership(successor.address))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(owner).acceptOwnership())
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(owner).executeAdministration(registry.target, "0x"))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(owner).executeGeographicAdministration("0x"))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
+    await assert.rejects(account.connect(owner).setEntryPoint(successor.address), /Unauthorized/);
+    await assert.rejects(account.connect(owner).transferOwnership(successor.address), /Unauthorized/);
+    await assert.rejects(account.connect(owner).acceptOwnership(), /Unauthorized/);
+    await assert.rejects(account.connect(owner).executeAdministration(registry.target, "0x"), /Unauthorized/);
+    await assert.rejects(account.connect(owner).executeGeographicAdministration("0x"), /Unauthorized/);
     expect(await account.owner()).to.equal(owner.address);
     expect(await account.pendingOwner()).to.equal(ethers.ZeroAddress);
     expect(await account.entryPoint()).to.equal(ethers.ZeroAddress);
@@ -35,14 +31,10 @@ describe("ECHO V4 administration fail-closed invariants", function () {
 
   it("rejects outsider admin mutations without changing ownership or nonce", async function () {
     const { owner, successor, outsider, registry, account } = await fixture();
-    await expect(account.connect(outsider).transferOwnership(successor.address))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(outsider).setEntryPoint(outsider.address))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(outsider).executeAdministration(registry.target, "0x"))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(outsider).executeGeographicAdministration("0x"))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
+    await assert.rejects(account.connect(outsider).transferOwnership(successor.address), /Unauthorized/);
+    await assert.rejects(account.connect(outsider).setEntryPoint(outsider.address), /Unauthorized/);
+    await assert.rejects(account.connect(outsider).executeAdministration(registry.target, "0x"), /Unauthorized/);
+    await assert.rejects(account.connect(outsider).executeGeographicAdministration("0x"), /Unauthorized/);
     expect(await account.owner()).to.equal(owner.address);
     expect(await account.pendingOwner()).to.equal(ethers.ZeroAddress);
     expect(await account.nonce()).to.equal(0n);
