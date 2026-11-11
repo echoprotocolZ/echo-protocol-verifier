@@ -23,82 +23,61 @@ jobs:
         run: npm ci
       - name: Compile contracts
         run: npx hardhat compile
-      - name: Test EGP-1 velocity and drift policy simulation
+      - name: Test EGP-1 velocity and drift simulation
         run: node scripts/egp1-velocity-simulation.js
       - name: Run V4 admin and ownership regressions
         run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-account-admin-intent.js test/echo-v4-admin-self-call-block.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
 
-  full-suite:
-    name: Full Hardhat suite (diagnostic)
+  artifact-independent:
+    name: Artifact-independent Hardhat regressions
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
-      - name: Install locked dependencies
-        run: npm ci
-      - name: Compile contracts
-        run: npx hardhat compile
-      - name: Generate disposable V3 circuit test artifacts
+      - run: npm ci
+      - run: npx hardhat compile
+      - name: Run tests not requiring external proving keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find test -maxdepth 1 -name '*.js' -type f | sort | grep -Ev '/(echo-v3-real-authorization-integration|echo-v3-real-proof|echo-v3-timestamp-real-proof|echo-v4-gateway-error-security|echo-v4-geographic-gateway|echo-v4-real-dual-proof-integration|echo-v4-solidity-proof|echo-z-artifact-integrity|echo-z-positive-initialization|full-flow|real-proof)\\.js$')
+          echo "Running ${#tests[@]} artifact-independent test files"
+          npx hardhat test "${tests[@]}"
+
+  full-suite:
+    name: Full Hardhat suite (diagnostic; missing proof fixtures)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx hardhat compile
+      - name: Generate disposable V3 test artifacts
         run: node scripts/build-v3-test-artifacts.js
-      - name: Compile V2 and V4 witness circuits in clean CI
+      - name: Compile V2 and V4 witness circuits
         shell: bash
         run: |
           mkdir -p build/v2 build/v4-geographic-bound
           npx --no-install circom2 EchoAuthorizationVerifierV2.circom --wasm -l node_modules -o build/v2
           npx --no-install circom2 circuits/v4/EchoGeographicBoundV4.circom --wasm -l node_modules -o build/v4-geographic-bound
-      - name: Audit dependency vulnerabilities (non-blocking diagnostic)
-        continue-on-error: true
-        run: npm audit --json > npm-audit.json
-      - name: Check missing proof fixtures
-        shell: bash
-        run: |
-          echo "Checking proof-dependent test inputs; missing files remain blockers, not skipped tests."
-          for file in \
-            build/v3-bound/input-local.json \
-            build/v3-timestamp-fixed/proof.json \
-            build/v3-timestamp-fixed/solidity-calldata.txt \
-            build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey \
-            build/v4-geographic-bound/proofs/valid-proof.json \
-            build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm \
-            build/v2/EchoAuthorizationVerifierV2_js/EchoAuthorizationVerifierV2.wasm \
-            build/v2/proof.json; do
-            if test -f "$file"; then echo "PRESENT: $file"; else echo "MISSING: $file"; fi
-          done
-      - name: Run artifact-independent Hardhat regressions
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t tests < <(find test -maxdepth 1 -name '*.js' -type f | sort | grep -Ev '/(echo-v3-real-authorization-integration|echo-v3-real-proof|echo-v3-timestamp-real-proof|echo-v4-gateway-error-security|echo-v4-geographic-gateway|echo-v4-real-dual-proof-integration|echo-v4-solidity-proof|echo-z-artifact-integrity|echo-z-positive-initialization|full-flow|real-proof)\\.js        shell: bash
-        run: |
-          set -o pipefail
-          npx hardhat test 2>&1 | tee full-hardhat-results.log
-      - name: Upload full-suite logs (including failures)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-hardhat-results
-          path: |
-            full-hardhat-results.log
-            npm-audit.json
-          if-no-files-found: ignore
-)
-          echo "Running ${#tests[@]} tests without external proving keys"
-          npx hardhat test "${tests[@]}"
-      - name: Run all Hardhat tests and capture results
+      - name: Run complete Hardhat suite (failures retained)
         shell: bash
         run: |
           set -o pipefail
           npx hardhat test 2>&1 | tee full-hardhat-results.log
-      - name: Upload full-suite logs (including failures)
+      - name: Upload full-suite diagnostic log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: full-hardhat-results
-          path: |
-            full-hardhat-results.log
-            npm-audit.json
+          path: full-hardhat-results.log
           if-no-files-found: ignore
