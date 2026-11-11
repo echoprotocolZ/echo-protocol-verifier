@@ -162,6 +162,79 @@ describe("Echo Protocol Z factory authorization", function () {
     );
   });
 
+
+  it("rejects a signature authorized for a different chain", async function () {
+    const wrongDomain = {
+      ...domain,
+      chainId: domain.chainId + 1n
+    };
+
+    const signature = await owner.signTypedData(wrongDomain, types, message);
+
+    await assert.rejects(
+      async () => {
+        const tx = await deploy(signature);
+        await tx.wait();
+      },
+      /InvalidSignature/
+    );
+
+    expect(await ethers.provider.getCode(predicted)).to.equal("0x");
+  });
+
+  it("rejects a signature authorized for a different factory", async function () {
+    const otherFactory = await (
+      await ethers.getContractFactory("EchoAccountFactoryZ")
+    ).deploy();
+    await otherFactory.waitForDeployment();
+
+    const wrongDomain = {
+      ...domain,
+      verifyingContract: await otherFactory.getAddress()
+    };
+
+    const signature = await owner.signTypedData(wrongDomain, types, message);
+
+    await assert.rejects(
+      async () => {
+        const tx = await deploy(signature);
+        await tx.wait();
+      },
+      /InvalidSignature/
+    );
+
+    expect(await ethers.provider.getCode(predicted)).to.equal("0x");
+  });
+
+  it("rejects a signature when authorized dependencies are changed", async function () {
+    const signature = await owner.signTypedData(domain, types, message);
+
+    const replacementRegistry = await (
+      await ethers.getContractFactory("EchoAgentPolicyRegistryZ")
+    ).deploy();
+    await replacementRegistry.waitForDeployment();
+
+    await assert.rejects(
+      async () => {
+        const tx = await factory.createAccount(
+          owner.address,
+          ethers.ZeroAddress,
+          await bridgePlaceholder.getAddress(),
+          await replacementRegistry.getAddress(),
+          salt,
+          targets,
+          calls,
+          deadline,
+          signature
+        );
+        await tx.wait();
+      },
+      /InvalidSignature/
+    );
+
+    expect(await ethers.provider.getCode(predicted)).to.equal("0x");
+  });
+
   it("rolls back deployment when initialization fails", async function () {
     const signature = await owner.signTypedData(domain, types, message);
 
