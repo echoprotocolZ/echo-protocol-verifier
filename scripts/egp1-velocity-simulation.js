@@ -57,7 +57,7 @@ const policy={medium:"FIBER_OPTIC",environment_tolerance_ms:100,max_environment_
 const copy=()=>structuredClone(base);
 const cases=[
   ["valid",x=>x,true,"POLICY_CHECKS_PASSED_ONLY"],
-  ["too_fast",x=>{x.observed_arrival_utc_ms=baseTime+1;x.spatiotemporal_vector.velocity_constraints.v_max_km_s=1;return x},false,"VELOCITY_EXCEEDED"],
+  ["too_fast",x=>{x.observed_arrival_utc_ms=baseTime+100;x.spatiotemporal_vector.velocity_constraints.v_max_km_s=0.001;return x},false,"VELOCITY_EXCEEDED"],
   ["too_slow",x=>{x.spatiotemporal_vector.velocity_constraints.v_min_km_s=100;return x},false,"VELOCITY_BELOW_MINIMUM"],
   ["late",x=>{x.observed_arrival_utc_ms=baseTime+3000;return x},false,"WINDOW_EXPIRED"],
   ["clock_drift",x=>{x.measured_clock_drift_ms=501;return x},false,"CLOCK_DRIFT"],
