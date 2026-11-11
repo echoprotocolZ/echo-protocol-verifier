@@ -32,6 +32,11 @@ async function main() {
   input.expectedNullifier = hash(input.account, input.expectedAuthorizationCommitment);
   const inputPath = path.join(base, "input-local.json");
   fs.writeFileSync(inputPath, JSON.stringify(input, null, 2));
+  // Legacy V3 integration tests read the same base fixture from v3-bound.
+  // Copy only input data; this is not a proof or proving key.
+  const legacyDir = "build/v3-bound";
+  fs.mkdirSync(legacyDir, { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, "input-local.json"), JSON.stringify(input, null, 2));
   const jsDir = path.join(base, circuit + "_js");
   const witness = path.join(base, "witness.wtns");
   execFileSync(process.execPath, [path.join(jsDir, "generate_witness.js"),
