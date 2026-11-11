@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "../EchoSmartAccountZ.sol";
 
 /// @notice Test-only harness exposing Z's real policy gate.
-/// @dev This does not bypass the production executeAuthorized proof checks.
+/// @dev checkExecutionPolicy exposes the production policy hook; simulateAuthorizedCall\n///      intentionally bypasses proof verification and policy checks for isolated hook tests.\n///      Never treat a successful simulation as a valid executeAuthorized authorization.
 contract EchoZExecutionPolicyHarness is EchoSmartAccountZ {
     constructor(address owner_, address bridge_, address factory_)
         EchoSmartAccountZ(owner_, address(0), bridge_, factory_) {}
