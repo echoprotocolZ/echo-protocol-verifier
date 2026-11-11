@@ -92,4 +92,32 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     assert.equal(await token.balanceOf(recipient.address), 3n);
   });
 
+  it("documents unmonitored indirect token outflow with a legacy allowance", async function () {
+    const [owner, agent, recipient] = await ethers.getSigners();
+    const bridge = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await bridge.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const spender = await (await ethers.getContractFactory("EchoIndirectTokenSpenderTestMock")).deploy();
+    await spender.waitForDeployment();
+    const account = await (await ethers.getContractFactory("EchoZExecutionPolicyHarness")).deploy(
+      owner.address, bridge.target, owner.address
+    );
+    await account.waitForDeployment();
+    await (await token.transfer(account.target, 100n)).wait();
+    await (await account.fixtureApprove(token.target, spender.target, 10n)).wait();
+
+    // The actual Z hooks only track monitoredToken[agent].
+    assert.equal(await account.monitoredToken(agent.address), ethers.ZeroAddress);
+    const pull = spender.interface.encodeFunctionData("pull", [
+      token.target, account.target, recipient.address, 10n
+    ]);
+    await (await account.simulateAuthorizedCall(agent.address, spender.target, pull)).wait();
+    assert.equal(await token.balanceOf(account.target), 90n);
+    assert.equal(await token.balanceOf(recipient.address), 10n);
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), 0n);
+    // This harness bypasses authorization and agent policy checks. It demonstrates
+    // the accounting boundary, NOT a proven exploit of executeAuthorized().
+  });
+
 });
