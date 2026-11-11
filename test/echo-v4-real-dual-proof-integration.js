@@ -43,17 +43,15 @@ describe("ECHO V4 real dual-Groth16 authorization integration", function () {
     ).deploy(dualVerifier.target, registry.target);
 
     const account = await (
-      await ethers.getContractFactory("EchoSmartAccountV4")
-    ).deploy(owner.address, ethers.ZeroAddress, v4Bridge.target);
+      await ethers.getContractFactory("EchoBootstrappedSmartAccountV4")
+    ).deploy(owner.address, ethers.ZeroAddress, v4Bridge.target,
+      owner.address, validator.address,
+      { minLat: 100000, maxLat: 101000, minLon: 199000, maxLon: 201000 },
+      3600);
 
     const target = await (
       await ethers.getContractFactory("TestTarget")
     ).deploy();
-
-    async function admin(contract, method, args) {
-      const data = contract.interface.encodeFunctionData(method, args);
-      await (await account.executeAdministration(contract.target, data)).wait();
-    }
 
     const zone = {
       minLat: 100000,
@@ -75,32 +73,11 @@ describe("ECHO V4 real dual-Groth16 authorization integration", function () {
       )
     );
 
-    const geographicAdminData =
-      geographicPolicy.interface.encodeFunctionData(
-        "setGeographicPolicy",
-        [owner.address, zone]
-      );
-
-    await (
-      await account.executeGeographicAdministration(
-        geographicAdminData
-      )
-    ).wait();
-
-    await admin(registry, "setCheckpointBridge", [v4Bridge.target, true]);
-    await admin(registry, "setValidatorSigner", [validator.address, true]);
-    await admin(v4Bridge, "setAuthorizedDelegatee", [owner.address, true]);
-
-    await admin(registry, "setAttestationPolicy", [
-      owner.address,
-      {
-        allowedZoneHash: zoneHash,
-        maxTimeDrift: 3600,
-        requiredTier: 0,
-        allowValidatorFallback: false,
-        enabled: true
-      }
-    ]);
+    // Account-scoped configuration is performed atomically in the constructor.
+    expect(await registry.trustedValidatorSigners(account.target, validator.address))
+      .to.equal(true);
+    expect(await v4Bridge.authorizedDelegatees(account.target, owner.address))
+      .to.equal(true);
 
     const poseidon = await buildPoseidon();
     const hash = values => BigInt(
@@ -421,7 +398,7 @@ describe("ECHO V4 real dual-Groth16 authorization integration", function () {
     await expectAttackRejected(
       "Modified public timestamp signal",
       [checkpoint, signature, a, b, c, alteredSignals,
-       target.target, 0, data]
+       v4A, v4B, v4C, v4Signals, target.target, 0, data]
     );
 
     const [, unauthorizedSigner] = await ethers.getSigners();
@@ -471,7 +448,7 @@ describe("ECHO V4 real dual-Groth16 authorization integration", function () {
     await expectAttackRejected(
       "Modified authorization nonce",
       [checkpoint, signature, a, b, c, tamperedNonceSignals,
-       target.target, 0, data]
+       v4A, v4B, v4C, v4Signals, target.target, 0, data]
     );
 
     // Attack 7: Expire the authorization by advancing block time.
@@ -585,75 +562,21 @@ describe("ECHO V4 real dual-Groth16 authorization integration", function () {
 
     console.log("ATTACK REJECTED: Cross-chain signal replay");
 
-    // Attack 10: Reuse a checkpoint after its validator is revoked.
-    await admin(
-      registry,
-      "setValidatorSigner",
-      [validator.address, false]
+    // Post-bootstrap administration must remain disabled.
+    // Validator revocation requires a future proof-bound admin path.
+    const revokeData = registry.interface.encodeFunctionData(
+      "setValidatorSigner", [validator.address, false]
     );
-
-    expect(
-      await registry.trustedValidatorSigners(
-        account.target,
-        validator.address
-      )
-    ).to.equal(false);
-
-    // Confirm the exact registry error, not merely any revert.
-    let revocationError;
+    let adminDenied = false;
     try {
-      const tx = await account.executeAuthorized(...args);
-      await tx.wait();
+      await (await account.executeAdministration(registry.target, revokeData)).wait();
     } catch (error) {
-      revocationError = error;
+      adminDenied = true;
     }
-
-    expect(revocationError, "Revocation must revert").to.exist;
-
-    const expectedSelector = registry.interface.getError(
-      "UntrustedCheckpointSigner"
-    ).selector;
-
-    const revocationRevertData =
-      revocationError?.data ??
-      revocationError?.error?.data ??
-      revocationError?.info?.error?.data;
-
-    expect(
-      revocationRevertData,
-      "Expected UntrustedCheckpointSigner error"
-    ).to.equal(expectedSelector);
-
+    expect(adminDenied, "Post-bootstrap administration must revert").to.equal(true);
+    expect(await registry.trustedValidatorSigners(account.target, validator.address))
+      .to.equal(true);
     expect(await account.nonce()).to.equal(0n);
-    expect(await v4Bridge.consumedNullifiers(nullifier)).to.equal(false);
-    expect(await target.storedValue()).to.equal(0n);
-
-    const revokedDigest =
-      await registry.checkpointDigest(checkpoint);
-
-    expect(
-      await registry.consumedCheckpoints(revokedDigest)
-    ).to.equal(false);
-
-    console.log(
-      "ATTACK REJECTED: Revoked validator authorization"
-    );
-
-    // Restore validator trust for the legitimate execution.
-    await admin(
-      registry,
-      "setValidatorSigner",
-      [validator.address, true]
-    );
-
-    expect(
-      await registry.trustedValidatorSigners(
-        account.target,
-        validator.address
-      )
-    ).to.equal(true);
-
-    console.log("Validator restored for legitimate execution");
 
     await (await account.executeAuthorized(...args)).wait();
 
