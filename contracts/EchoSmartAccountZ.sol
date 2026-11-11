@@ -493,21 +493,27 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
     ) internal view override {
         if (target == agentPolicyRegistry) revert Unauthorized();
 
-        // Milestone 8: prevent persistent ERC-20 approvals
-        // through the standard agent execution pathway.
+        // Fail closed for standard ERC-20 spending selectors.
+        // Only direct transfer of the budget-monitored token is supported.
+        // Persistent allowances are forbidden even for that token.
+        // This does not constrain indirect spending through arbitrary
+        // allowlisted target contracts; such targets require separate review.
         address monitored = monitoredToken[delegatee];
-        if (
-            monitored != address(0) &&
-            target == monitored &&
-            data.length >= 4 &&
-            (
-                bytes4(data[:4]) == 0x095ea7b3 || // approve
-                bytes4(data[:4]) == 0x39509351 || // increaseAllowance
-                bytes4(data[:4]) == 0x23b872dd || // transferFrom
-                bytes4(data[:4]) == 0xd505accf    // permit (common EIP-2612)
-            )
-        ) {
-            revert Unauthorized();
+        if (data.length >= 4) {
+            bytes4 selector = bytes4(data[:4]);
+            if (
+                selector == 0x095ea7b3 || // approve
+                selector == 0x39509351 || // increaseAllowance
+                selector == 0x23b872dd || // transferFrom
+                selector == 0xd505accf || // permit (common EIP-2612)
+                selector == 0xa457c2d7 || // decreaseAllowance
+                selector == 0x42966c68    // burn(uint256), conservative
+            ) revert Unauthorized();
+
+            if (
+                selector == 0xa9059cbb && // transfer
+                (monitored == address(0) || target != monitored)
+            ) revert Unauthorized();
         }
 
         if (!initialized || agentPolicyRegistry.code.length == 0) {
