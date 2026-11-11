@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const assert = require("node:assert/strict");
 const { ethers } = require("hardhat");
 
 describe("ECHO V4 atomic bootstrap security", function () {
@@ -35,27 +36,20 @@ describe("ECHO V4 atomic bootstrap security", function () {
     expect(geo.zoneHash).to.equal(zoneHash);
     expect(geo.enabled).to.equal(true);
     expect(await registry.trustedValidatorSigners(outsider.address, validator.address)).to.equal(false);
-    await expect(account.executeAdministration(registry.target, "0x"))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.executeGeographicAdministration("0x"))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
-    await expect(account.connect(outsider).transferOwnership(outsider.address))
-      .to.be.revertedWithCustomError(account, "Unauthorized");
+    await assert.rejects(account.executeAdministration(registry.target, "0x"), /Unauthorized/);
+    await assert.rejects(account.executeGeographicAdministration("0x"), /Unauthorized/);
+    await assert.rejects(account.connect(outsider).transferOwnership(outsider.address), /Unauthorized/);
   });
   it("rejects invalid bootstrap input atomically", async function () {
     const { owner, validator, bridge } = await dependencies();
     const factory = await ethers.getContractFactory("EchoBootstrappedSmartAccountV4");
-    await expect(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
-      ethers.ZeroAddress, validator.address, zone, 3600))
-      .to.be.revertedWithCustomError(factory, "InvalidBootstrapConfiguration");
-    await expect(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
-      owner.address, ethers.ZeroAddress, zone, 3600))
-      .to.be.revertedWithCustomError(factory, "InvalidBootstrapConfiguration");
-    await expect(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
-      owner.address, validator.address, zone, 0))
-      .to.be.revertedWithCustomError(factory, "InvalidBootstrapConfiguration");
-    await expect(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
-      owner.address, validator.address, { ...zone, minLat: zone.maxLat + 1 }, 3600))
-      .to.be.reverted;
+    await assert.rejects(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
+      ethers.ZeroAddress, validator.address, zone, 3600), /InvalidBootstrapConfiguration/);
+    await assert.rejects(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
+      owner.address, ethers.ZeroAddress, zone, 3600), /InvalidBootstrapConfiguration/);
+    await assert.rejects(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
+      owner.address, validator.address, zone, 0), /InvalidBootstrapConfiguration/);
+    await assert.rejects(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
+      owner.address, validator.address, { ...zone, minLat: zone.maxLat + 1 }, 3600)));
   });
 });
