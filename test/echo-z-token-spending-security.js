@@ -134,4 +134,27 @@ describe("Echo Z token-spending security", function () {
     );
   });
 
+  it("documents that protected-token settings do not restrict other allowlisted contract calls", async function () {
+    const [account, agent] = await ethers.getSigners();
+    const registry = await (await ethers.getContractFactory("EchoAgentPolicyRegistryZ")).deploy();
+    await registry.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const otherTarget = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await otherTarget.waitForDeployment();
+    const block = await ethers.provider.getBlock("latest");
+    await registry.connect(account).setAgentPolicy(agent.address, 0, BigInt(block.timestamp) + 3600n, true);
+    await registry.connect(account).setProtectedToken(token.target, true);
+
+    // A target that is not the protected token may still receive approved calls.
+    // This is only a registry-level permission test, not a demonstrated outflow.
+    const selector = "0x12345678";
+    await registry.connect(account).setTargetPermission(agent.address, otherTarget.target, true);
+    await registry.connect(account).setSelectorPermission(agent.address, otherTarget.target, selector, true);
+    assert.equal(
+      await registry.validateExecution(account.address, agent.address, otherTarget.target, 0, selector),
+      true
+    );
+  });
+
 });
