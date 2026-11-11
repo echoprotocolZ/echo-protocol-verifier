@@ -25,4 +25,17 @@ contract EchoZExecutionPolicyHarness is EchoSmartAccountZ {
         _afterAuthorizedExecution(delegatee, target, 0, data);
         return output;
     }
+    /// @notice Local fixture: set a monitored budget through the account's self-call.
+    function fixtureSetBudget(address agent, address token, uint256 budget) external {
+        this.setTokenSpendingBudget(agent, token, budget);
+    }
+
+    /// @notice Local fixture: reproduce a pre-existing allowance.
+    function fixtureApprove(address token, address spender, uint256 amount) external {
+        (bool ok, bytes memory response) = token.call(
+            abi.encodeWithSignature("approve(address,uint256)", spender, amount)
+        );
+        require(ok && (response.length == 0 ||
+            (response.length == 32 && abi.decode(response, (bool)))), "APPROVE_FAILED");
+    }
 }
