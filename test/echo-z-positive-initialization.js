@@ -2139,6 +2139,24 @@ describe("Echo Protocol Z positive initialization", function () {
 
       assert.equal(await account.nonce(), budgetNonceBefore);
 
+
+      // Rejected proof must preserve all budget state.
+      assert.equal(
+        await account.tokenSpendingBudgets(agent.address, echoTokenMock.target),
+        0n
+      );
+      assert.equal(
+        await account.tokenSpendingUsed(agent.address, echoTokenMock.target),
+        0n
+      );
+      assert.equal(
+        await account.tokenSpendingBudgetConfigured(
+          agent.address, echoTokenMock.target
+        ),
+        false
+      );
+      console.log("PASS: Tampered budget proof preserved all budget state");
+
       // Execute the genuine proof-authorized budget update.
       await (
         await account.connect(owner)
