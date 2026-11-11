@@ -172,4 +172,26 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     assert.equal(await account.tokenSpendingBudgetConfigured(agent.address, token.target), true);
   });
 
+  it("rejects switching the monitored token after budget configuration", async function () {
+    const [owner, agent] = await ethers.getSigners();
+    const bridge = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await bridge.waitForDeployment();
+    const firstToken = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await firstToken.waitForDeployment();
+    const secondToken = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await secondToken.waitForDeployment();
+    const account = await (await ethers.getContractFactory("EchoZExecutionPolicyHarness")).deploy(
+      owner.address, bridge.target, owner.address
+    );
+    await account.waitForDeployment();
+    await (await account.fixtureSetBudget(agent.address, firstToken.target, 5n)).wait();
+    await assert.rejects(async () => {
+      const tx = await account.fixtureSetBudget(agent.address, secondToken.target, 5n);
+      await tx.wait();
+    });
+    assert.equal(await account.monitoredToken(agent.address), firstToken.target);
+    assert.equal(await account.tokenSpendingBudgets(agent.address, firstToken.target), 5n);
+    assert.equal(await account.tokenSpendingBudgetConfigured(agent.address, secondToken.target), false);
+  });
+
 });
