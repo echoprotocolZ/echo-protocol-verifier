@@ -23,6 +23,8 @@ jobs:
         run: npm ci
       - name: Compile contracts
         run: npx hardhat compile
+      - name: Test EGP-1 velocity and drift policy simulation
+        run: node scripts/egp1-velocity-simulation.js
       - name: Run V4 admin and ownership regressions
         run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-account-admin-intent.js test/echo-v4-admin-self-call-block.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
 
