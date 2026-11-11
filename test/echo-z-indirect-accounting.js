@@ -60,4 +60,36 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     assert.equal(await account.tokenSpendingUsed(agent.address, token.target), 0n);
   });
 
+  it("records permitted indirect spending and rejects cumulative budget exhaustion", async function () {
+    const [owner, agent, recipient] = await ethers.getSigners();
+    const bridge = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await bridge.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const spender = await (await ethers.getContractFactory("EchoIndirectTokenSpenderTestMock")).deploy();
+    await spender.waitForDeployment();
+    const account = await (await ethers.getContractFactory("EchoZExecutionPolicyHarness")).deploy(
+      owner.address, bridge.target, owner.address
+    );
+    await account.waitForDeployment();
+    await (await token.transfer(account.target, 100n)).wait();
+    await (await account.fixtureSetBudget(agent.address, token.target, 5n)).wait();
+    await (await account.fixtureApprove(token.target, spender.target, 10n)).wait();
+
+    const pull = amount => spender.interface.encodeFunctionData("pull", [
+      token.target, account.target, recipient.address, amount
+    ]);
+    await (await account.simulateAuthorizedCall(agent.address, spender.target, pull(3n))).wait();
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), 3n);
+    assert.equal(await token.balanceOf(account.target), 97n);
+
+    await assert.rejects(async () => {
+      const tx = await account.simulateAuthorizedCall(agent.address, spender.target, pull(3n));
+      await tx.wait();
+    });
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), 3n);
+    assert.equal(await token.balanceOf(account.target), 97n);
+    assert.equal(await token.balanceOf(recipient.address), 3n);
+  });
+
 });
