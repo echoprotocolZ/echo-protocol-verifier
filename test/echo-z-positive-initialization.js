@@ -2441,6 +2441,47 @@ describe("Echo Protocol Z positive initialization", function () {
 
     console.log("PASS: Over-budget stake rejected with atomic rollback");
 
+    // Retry the exact authorization that failed on the spending limit.
+    // It must still reach SpendingBudgetExceeded, rather than fail
+    // because the earlier reverted transaction consumed its proof.
+    await assert.rejects(async () => {
+      const tx = await account.connect(agent).executeAuthorized(
+        secondStakeAuth.checkpoint,
+        secondStakeAuth.signature,
+        secondStakeAuth.proof.v3A,
+        secondStakeAuth.proof.v3B,
+        secondStakeAuth.proof.v3C,
+        secondStakeAuth.proof.v3Signals,
+        secondStakeAuth.proof.v4A,
+        secondStakeAuth.proof.v4B,
+        secondStakeAuth.proof.v4C,
+        secondStakeAuth.proof.v4Signals,
+        echoStakingMock.target, 0, stakeData
+      );
+      await tx.wait();
+    }, /SpendingBudgetExceeded/);
+
+    assert.equal(await account.nonce(), nonceBeforeExcess);
+    assert.equal(
+      await account.tokenSpendingUsed(agent.address, echoTokenMock.target),
+      usedBeforeExcess
+    );
+    assert.equal(
+      await echoTokenMock.balanceOf(account.target),
+      balanceBeforeExcess
+    );
+    assert.equal(
+      await echoStakingMock.getValidatorStake(account.target),
+      stakeBeforeExcess
+    );
+    assert.equal(
+      await echoTokenMock.allowance(account.target, echoStakingMock.target),
+      allowanceBeforeExcess
+    );
+
+    console.log("PASS: Failed staking proof remains unconsumed");
+
+
 
       console.log("PASS: Token balances verified");
       console.log("PASS: Staking nonce advanced exactly once");
