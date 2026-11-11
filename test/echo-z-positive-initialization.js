@@ -2264,6 +2264,34 @@ describe("Echo Protocol Z positive initialization", function () {
 
       console.log("PASS: Standalone ECHO approval rejected");
 
+      // Real dual-proof negative control for an unapproved indirect spender.
+      const indirectSpender = await deploy("EchoIndirectTokenSpenderTestMock");
+      const indirectData = indirectSpender.interface.encodeFunctionData("pull", [
+        echoTokenMock.target, account.target, outsider.address, 1n
+      ]);
+      const indirectAuth = await buildAuthorization({
+        ethers, account, agent, validator, registry,
+        target: indirectSpender.target, value: 0n, data: indirectData,
+        zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
+      });
+      const nonceBeforeIndirect = await account.nonce();
+      const balanceBeforeIndirect = await echoTokenMock.balanceOf(account.target);
+      await assert.rejects(async () => {
+        const p = indirectAuth.proof;
+        const tx = await account.connect(agent).executeAuthorized(
+          indirectAuth.checkpoint, indirectAuth.signature,
+          p.v3A, p.v3B, p.v3C, p.v3Signals,
+          p.v4A, p.v4B, p.v4C, p.v4Signals,
+          indirectSpender.target, 0, indirectData
+        );
+        await tx.wait();
+      });
+      assert.equal(await account.nonce(), nonceBeforeIndirect);
+      assert.equal(await echoTokenMock.balanceOf(account.target), balanceBeforeIndirect);
+      assert.equal(await v4Bridge.consumedNullifiers(indirectAuth.proof.v3Signals[2]), false);
+      console.log("PASS: Real V3/V4 proof rejected for unapproved indirect spender");
+      // This does not cover an approved spender with a pre-existing allowance.
+
       const stakeAmount = ethers.parseEther("1000");
 
       // Milestone 8: staking authorization now performs
