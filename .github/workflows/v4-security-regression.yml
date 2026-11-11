@@ -52,7 +52,6 @@ jobs:
     name: Full Hardhat suite (diagnostic; missing proof fixtures)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
