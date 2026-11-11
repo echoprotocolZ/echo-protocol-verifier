@@ -42,6 +42,12 @@ jobs:
         run: npx hardhat compile
       - name: Generate disposable V3 circuit test artifacts
         run: node scripts/build-v3-test-artifacts.js
+      - name: Compile V2 and V4 witness circuits in clean CI
+        shell: bash
+        run: |
+          mkdir -p build/v2 build/v4-geographic-bound
+          npx --no-install circom2 EchoAuthorizationVerifierV2.circom --wasm -l node_modules -o build/v2
+          npx --no-install circom2 circuits/v4/EchoGeographicBoundV4.circom --wasm -l node_modules -o build/v4-geographic-bound
       - name: Audit dependency vulnerabilities (non-blocking diagnostic)
         continue-on-error: true
         run: npm audit --json > npm-audit.json
