@@ -40,6 +40,8 @@ jobs:
         run: npm ci
       - name: Compile contracts
         run: npx hardhat compile
+      - name: Generate disposable V3 circuit test artifacts
+        run: node scripts/build-v3-test-artifacts.js
       - name: Run all Hardhat tests and capture results
         shell: bash
         run: |
