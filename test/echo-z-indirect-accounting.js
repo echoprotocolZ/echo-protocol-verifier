@@ -152,4 +152,24 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     assert.equal(await token.balanceOf(account.target), 0n);
   });
 
+  it("rejects a failed budget increase without changing the configured limit", async function () {
+    const [owner, agent] = await ethers.getSigners();
+    const bridge = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await bridge.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const account = await (await ethers.getContractFactory("EchoZExecutionPolicyHarness")).deploy(
+      owner.address, bridge.target, owner.address
+    );
+    await account.waitForDeployment();
+    await (await account.fixtureSetBudget(agent.address, token.target, 5n)).wait();
+    await assert.rejects(async () => {
+      const tx = await account.fixtureSetBudget(agent.address, token.target, 6n);
+      await tx.wait();
+    });
+    assert.equal(await account.tokenSpendingBudgets(agent.address, token.target), 5n);
+    assert.equal(await account.monitoredToken(agent.address), token.target);
+    assert.equal(await account.tokenSpendingBudgetConfigured(agent.address, token.target), true);
+  });
+
 });
