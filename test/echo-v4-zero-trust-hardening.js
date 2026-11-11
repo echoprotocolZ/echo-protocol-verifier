@@ -160,25 +160,3 @@ describe("ECHO V4 ownership zero-trust regression", function () {
     expect(await account.pendingOwner()).to.equal(ethers.ZeroAddress);
   });
 });
-
-describe("ECHO V4 ownership zero-trust regression", function () {
-  it("rejects proof-free ownership transfer initiation", async function () {
-    const [owner, newOwner] = await ethers.getSigners();
-
-    const registry = await (
-      await ethers.getContractFactory("EchoAttestationRegistryV3")
-    ).deploy();
-
-    const account = await (
-      await ethers.getContractFactory("EchoSmartAccountV4")
-    ).deploy(owner.address, ethers.ZeroAddress, registry.target);
-
-    await assert.rejects(async () => {
-      const tx = await account.connect(owner).transferOwnership(newOwner.address);
-      await tx.wait();
-    });
-
-    expect(await account.owner()).to.equal(owner.address);
-    expect(await account.pendingOwner()).to.equal(ethers.ZeroAddress);
-  });
-});
