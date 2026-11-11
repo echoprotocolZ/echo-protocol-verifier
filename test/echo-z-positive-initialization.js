@@ -423,6 +423,29 @@ describe("Echo Protocol Z positive initialization", function () {
 
     console.log("MILESTONE 6: Z account funded with local test ECHO");
 
+
+    // Post-initialization delegate isolation.
+    await (
+      await v4Bridge.connect(outsider)
+        .setAuthorizedDelegatee(outsider.address, true)
+    ).wait();
+
+    expect(
+      await v4Bridge.authorizedDelegatees(
+        account.target,
+        outsider.address
+      )
+    ).to.equal(false);
+
+    expect(
+      await v4Bridge.authorizedDelegatees(
+        account.target,
+        agent.address
+      )
+    ).to.equal(true);
+
+    console.log("PASS: Initialized account delegate isolation");
+
     expect(await account.initialized()).to.equal(true);
     expect(await account.owner()).to.equal(owner.address);
     expect(await account.deploymentFactory()).to.equal(factory.target);
