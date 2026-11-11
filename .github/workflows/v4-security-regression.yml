@@ -37,6 +37,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx hardhat compile
+      - name: Generate V3 circuit metadata for public-signal tests
+        run: node scripts/build-v3-test-artifacts.js
       - name: Run tests without external proving keys
         shell: bash
         run: |
