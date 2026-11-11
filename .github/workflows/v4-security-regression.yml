@@ -24,7 +24,7 @@ jobs:
       - name: Compile contracts
         run: npx hardhat compile
       - name: Run V4 admin and ownership regressions
-        run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-account-admin-intent.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
+        run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-account-admin-intent.js test/echo-v4-admin-self-call-block.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
 
   full-suite:
     name: Full Hardhat suite (diagnostic)
