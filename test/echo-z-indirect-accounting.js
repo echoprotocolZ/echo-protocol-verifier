@@ -223,4 +223,26 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     assert.equal(await token.balanceOf(account.target), 94n);
   });
 
+  it("allows reducing an unspent budget while keeping the same monitored token", async function () {
+    const [owner, agent] = await ethers.getSigners();
+    const bridge = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await bridge.waitForDeployment();
+    const token = await (await ethers.getContractFactory("EchoTokenTestMock")).deploy();
+    await token.waitForDeployment();
+    const account = await (await ethers.getContractFactory("EchoZExecutionPolicyHarness")).deploy(
+      owner.address, bridge.target, owner.address
+    );
+    await account.waitForDeployment();
+    await (await account.fixtureSetBudget(agent.address, token.target, 10n)).wait();
+    await (await account.fixtureSetBudget(agent.address, token.target, 4n)).wait();
+    assert.equal(await account.monitoredToken(agent.address), token.target);
+    assert.equal(await account.tokenSpendingBudgets(agent.address, token.target), 4n);
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), 0n);
+    await assert.rejects(async () => {
+      const tx = await account.fixtureSetBudget(agent.address, token.target, 10n);
+      await tx.wait();
+    });
+    assert.equal(await account.tokenSpendingBudgets(agent.address, token.target), 4n);
+  });
+
 });
