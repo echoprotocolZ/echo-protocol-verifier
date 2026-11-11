@@ -50,6 +50,6 @@ describe("ECHO V4 atomic bootstrap security", function () {
     await assert.rejects(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
       owner.address, validator.address, zone, 0), /InvalidBootstrapConfiguration/);
     await assert.rejects(factory.deploy(owner.address, ethers.ZeroAddress, bridge.target,
-      owner.address, validator.address, { ...zone, minLat: zone.maxLat + 1 }, 3600)));
+      owner.address, validator.address, { ...zone, minLat: zone.maxLat + 1 }, 3600));
   });
 });
