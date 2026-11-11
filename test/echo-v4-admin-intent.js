@@ -1,10 +1,11 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const assert = require("node:assert/strict");
 
 describe("ECHO V4 ownership administrative intent encoding", function () {
-  let harness, account, successor;
+  let harness, account, successor, thirdParty;
   beforeEach(async function () {
-    [account, successor] = await ethers.getSigners();
+    [account, successor, thirdParty] = await ethers.getSigners();
     harness = await (await ethers.getContractFactory("EchoV4AdminIntentHarness")).deploy();
   });
 
@@ -41,8 +42,8 @@ describe("ECHO V4 ownership administrative intent encoding", function () {
   it("changes the payload when any replay-sensitive parameter changes", async function () {
     const original = await payload();
     for (const change of [
-      { account: successor.address },
-      { successor: account.address },
+      { account: thirdParty.address },
+      { successor: thirdParty.address },
       { chainId: 1n },
       { nonce: 1n },
       { deadline: 2000000001n }
@@ -52,13 +53,9 @@ describe("ECHO V4 ownership administrative intent encoding", function () {
   });
 
   it("rejects zero account, zero or self successor, and zero deadline", async function () {
-    await expect(payload({ account: ethers.ZeroAddress }))
-      .to.be.revertedWithCustomError(harness, "InvalidAccount");
-    await expect(payload({ successor: ethers.ZeroAddress }))
-      .to.be.revertedWithCustomError(harness, "InvalidSuccessor");
-    await expect(payload({ successor: account.address }))
-      .to.be.revertedWithCustomError(harness, "InvalidSuccessor");
-    await expect(payload({ deadline: 0n }))
-      .to.be.revertedWithCustomError(harness, "InvalidDeadline");
+    await assert.rejects(payload({ account: ethers.ZeroAddress }), /InvalidAccount/);
+    await assert.rejects(payload({ successor: ethers.ZeroAddress }), /InvalidSuccessor/);
+    await assert.rejects(payload({ successor: account.address }), /InvalidSuccessor/);
+    await assert.rejects(payload({ deadline: 0n }), /InvalidDeadline/);
   });
 });
