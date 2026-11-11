@@ -235,6 +235,36 @@ describe("Echo Protocol Z factory authorization", function () {
     expect(await ethers.provider.getCode(predicted)).to.equal("0x");
   });
 
+
+  it("rejects a signature when the bridge is changed", async function () {
+    const signature = await owner.signTypedData(domain, types, message);
+
+    const replacementBridge = await (
+      await ethers.getContractFactory("EchoAttestationRegistryV3")
+    ).deploy();
+    await replacementBridge.waitForDeployment();
+
+    await assert.rejects(
+      async () => {
+        const tx = await factory.createAccount(
+          owner.address,
+          ethers.ZeroAddress,
+          await replacementBridge.getAddress(),
+          await agentPolicyRegistry.getAddress(),
+          salt,
+          targets,
+          calls,
+          deadline,
+          signature
+        );
+        await tx.wait();
+      },
+      /InvalidSignature/
+    );
+
+    expect(await ethers.provider.getCode(predicted)).to.equal("0x");
+  });
+
   it("rolls back deployment when initialization fails", async function () {
     const signature = await owner.signTypedData(domain, types, message);
 
