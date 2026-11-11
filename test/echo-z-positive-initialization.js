@@ -2333,6 +2333,18 @@ describe("Echo Protocol Z positive initialization", function () {
 
       await stakeTx.wait();
 
+      const successfulStakeNullifier =
+        stakeAuth.proof.v3Signals[2];
+
+      assert.equal(
+        await v4Bridge.consumedNullifiers(successfulStakeNullifier),
+        true,
+        "Successful staking must consume its nullifier"
+      );
+
+      console.log("PASS: Successful staking nullifier consumed");
+
+
       assert.equal(
         await echoStakingMock.getValidatorStake(account.target),
         stakeAmount
@@ -2479,6 +2491,17 @@ describe("Echo Protocol Z positive initialization", function () {
       allowanceBeforeExcess
     );
 
+
+    const failedStakeNullifier =
+      secondStakeAuth.proof.v3Signals[2];
+
+    assert.equal(
+      await v4Bridge.consumedNullifiers(failedStakeNullifier),
+      false,
+      "Failed staking must not consume its nullifier"
+    );
+
+    console.log("PASS: Failed staking nullifier preserved");
     console.log("PASS: Failed staking proof remains unconsumed");
 
 
