@@ -64,13 +64,41 @@ describe("Echo Protocol Z post-initialization delegate regression", function () 
     const { owner, agent, outsider, replacement, bridge, account } = await fixture();
     const address = await account.getAddress();
     const nonceBefore = await account.nonce();
-    for (const caller of [outsider, owner]) {
+    for (const caller of [outsider, owner, agent]) {
       await (await bridge.connect(caller).setAuthorizedDelegatee(replacement.address, true)).wait();
       await (await bridge.connect(caller).setAuthorizedDelegatee(agent.address, false)).wait();
       expect(await bridge.authorizedDelegatees(address, replacement.address)).to.equal(false);
       expect(await bridge.authorizedDelegatees(address, agent.address)).to.equal(true);
     }
     expect(await account.nonce()).to.equal(nonceBefore);
+  });
+
+  it("rejects proof-free executeAuthorized calls targeting the bridge", async function () {
+    const { owner, agent, replacement, bridge, account } = await fixture();
+    const address = await account.getAddress();
+    const nonceBefore = await account.nonce();
+    const checkpoint = {
+      account: address, delegatee: agent.address,
+      zoneHash: ethers.ZeroHash, checkpointCommitment: ethers.ZeroHash,
+      authorizationCommitment: ethers.ZeroHash, timestamp: 0, nonce: nonceBefore
+    };
+    const zeros2 = [0n, 0n];
+    const zerosB = [[0n, 0n], [0n, 0n]];
+    const data = bridge.interface.encodeFunctionData("setAuthorizedDelegatee", [
+      replacement.address, true
+    ]);
+    await assert.rejects(async () => {
+      const tx = await account.connect(owner).executeAuthorized(
+        checkpoint, "0x",
+        zeros2, zerosB, zeros2, Array(20).fill(0n),
+        zeros2, zerosB, zeros2, Array(5).fill(0n),
+        bridge.target, 0n, data
+      );
+      await tx.wait();
+    });
+    assert.equal(await bridge.authorizedDelegatees(address, replacement.address), false);
+    assert.equal(await bridge.authorizedDelegatees(address, agent.address), true);
+    assert.equal(await account.nonce(), nonceBefore);
   });
 
   it("rejects reinitialization that attempts to replace the delegate", async function () {
