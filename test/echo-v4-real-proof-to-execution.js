@@ -9,7 +9,7 @@ const {ethers}=require("hardhat");
 // production smart-account policy administration is intentionally disabled.
 describe("Echo real proof-to-account execution",function(){
  this.timeout(180000);
- for(const mode of ["success","rollback","invalid-signature","untrusted-validator","unauthorized-caller","tampered-target","tampered-value","tampered-calldata","expired-authorization","revoked-geographic-policy","revoked-attestation-policy"]) it(({success:"executes a validator-signed dual-proof authorization once and rejects replay",rollback:"rolls back checkpoint, nullifier and nonce when target reverts","invalid-signature":"rejects a forged validator signature with real proofs","untrusted-validator":"rejects an untrusted validator with real proofs","unauthorized-caller":"rejects an unauthorized caller with real proofs","tampered-target":"rejects transaction target tampering with real proofs","tampered-value":"rejects ETH value tampering with real proofs","tampered-calldata":"rejects calldata tampering with real proofs","expired-authorization":"rejects expired authorization with real proofs","revoked-geographic-policy":"rejects revoked geographic policy with real proofs","revoked-attestation-policy":"rejects revoked attestation policy with real proofs"})[mode],async function(){
+ for(const mode of ["success","rollback","invalid-signature","untrusted-validator","unauthorized-caller","tampered-target","tampered-value","tampered-calldata","expired-authorization","revoked-geographic-policy","revoked-attestation-policy","bootstrap-success"]) it(({success:"executes a validator-signed dual-proof authorization once and rejects replay",rollback:"rolls back checkpoint, nullifier and nonce when target reverts","invalid-signature":"rejects a forged validator signature with real proofs","untrusted-validator":"rejects an untrusted validator with real proofs","unauthorized-caller":"rejects an unauthorized caller with real proofs","tampered-target":"rejects transaction target tampering with real proofs","tampered-value":"rejects ETH value tampering with real proofs","tampered-calldata":"rejects calldata tampering with real proofs","expired-authorization":"rejects expired authorization with real proofs","revoked-geographic-policy":"rejects revoked geographic policy with real proofs","revoked-attestation-policy":"rejects revoked attestation policy with real proofs","bootstrap-success":"executes real dual Groth16 proof from constructor-bootstrapped account without impersonation"})[mode],async function(){
   const shouldRevert=mode==="rollback";
   async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
   const [owner,validator,target]=await ethers.getSigners();
@@ -23,17 +23,31 @@ describe("Echo real proof-to-account execution",function(){
   const gateway=await deploy("EchoGeographicProofGatewayV4",v4verifier.target,policy.target);
   const dual=await deploy("EchoDualProofVerifierV4",v3bridge.target,gateway.target);
   const bridge=await deploy("EchoAuthorizationBridgeV4",dual.target,registry.target);
-  const account=await deploy("EchoSmartAccountV4",owner.address,ethers.ZeroAddress,bridge.target);
-  const accountSigner=await ethers.getImpersonatedSigner(account.target);
-  await ethers.provider.send("hardhat_setBalance",[account.target,ethers.toBeHex(ethers.parseEther("1"))]);
   const zone=[100050n,100050n,200000n,200000n];
-  await(await policy.connect(accountSigner).setGeographicPolicy(account.target,zone)).wait();
+  const bootstrap=mode==="bootstrap-success";
+  const account=bootstrap
+   ? await deploy("EchoSmartAccountV4Bootstrapped",owner.address,ethers.ZeroAddress,bridge.target,validator.address,zone,3600n)
+   : await deploy("EchoSmartAccountV4",owner.address,ethers.ZeroAddress,bridge.target);
+  // No impersonation whatsoever on the bootstrap-success path.
+  let accountSigner;
+  if(!bootstrap){
+   accountSigner=await ethers.getImpersonatedSigner(account.target);
+   await ethers.provider.send("hardhat_setBalance",[account.target,ethers.toBeHex(ethers.parseEther("1"))]);
+   await(await policy.connect(accountSigner).setGeographicPolicy(account.target,zone)).wait();
+  }
   const zoneHash=(await policy.getGeographicPolicy(account.target,account.target)).zoneHash;
-  await(await registry.connect(accountSigner).setCheckpointBridge(bridge.target,true)).wait();
-  await(await registry.connect(accountSigner).setValidatorSigner(validator.address,true)).wait();
-  await(await registry.connect(accountSigner).setAttestationPolicy(account.target,{
-   allowedZoneHash:zoneHash,maxTimeDrift:3600n,requiredTier:0,allowValidatorFallback:false,enabled:true
-  })).wait();
+  if(!bootstrap){
+   await(await registry.connect(accountSigner).setCheckpointBridge(bridge.target,true)).wait();
+   await(await registry.connect(accountSigner).setValidatorSigner(validator.address,true)).wait();
+   await(await registry.connect(accountSigner).setAttestationPolicy(account.target,{
+    allowedZoneHash:zoneHash,maxTimeDrift:3600n,requiredTier:0,allowValidatorFallback:false,enabled:true
+   })).wait();
+  }else{
+   assert.equal(await registry.authorizedCheckpointBridges(account.target,bridge.target),true);
+   assert.equal(await registry.trustedValidatorSigners(account.target,validator.address),true);
+   assert.equal((await registry.attestationPolicies(account.target,account.target)).enabled,true);
+   assert.equal((await policy.getGeographicPolicy(account.target,account.target)).enabled,true);
+  }
   const base="build/v3-timestamp-fixed";
   const input=JSON.parse(fs.readFileSync(base+"/input-local.json","utf8"));
   const poseidon=await buildPoseidon();
@@ -107,7 +121,7 @@ describe("Echo real proof-to-account execution",function(){
   const executionData=mode==="tampered-calldata" ? "0x12345678" : callData;
   const execute=()=>account.connect(caller).executeAuthorized(cp,signatureToUse,
    ...v3args,...v4args,executionTarget,executionValue,executionData);
-  if(!["success","rollback"].includes(mode)){
+  if(!["success","rollback","bootstrap-success"].includes(mode)){
    await assert.rejects(async()=>{const tx=await execute();await tx.wait();},mode+" must reject");
    assert.equal(await account.nonce(),0n,"Rejected authorization cannot advance account nonce");
    assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),false,"Rejected authorization cannot consume nullifier");
