@@ -9,7 +9,8 @@ const {ethers}=require("hardhat");
 // production smart-account policy administration is intentionally disabled.
 describe("Echo real proof-to-account execution",function(){
  this.timeout(180000);
- for(const shouldRevert of [false,true]) it(shouldRevert ? "rolls back checkpoint, nullifier and nonce when target reverts" : "executes a validator-signed dual-proof authorization once and rejects replay",async function(){
+ for(const mode of ["success","rollback","invalid-signature","untrusted-validator","unauthorized-caller","tampered-target"]) it(({success:"executes a validator-signed dual-proof authorization once and rejects replay",rollback:"rolls back checkpoint, nullifier and nonce when target reverts","invalid-signature":"rejects a forged validator signature with real proofs","untrusted-validator":"rejects an untrusted validator with real proofs","unauthorized-caller":"rejects an unauthorized caller with real proofs","tampered-target":"rejects transaction target tampering with real proofs"})[mode],async function(){
+  const shouldRevert=mode==="rollback";
   async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
   const [owner,validator,target]=await ethers.getSigners();
   const registry=await deploy("EchoAttestationRegistryV3");
@@ -89,9 +90,19 @@ describe("Echo real proof-to-account execution",function(){
    {name:"nonce",type:"uint256"}]};
   const signature=await validator.signTypedData(domain,types,cp);
   assert.equal(await dual.verifyDualProof(cp,...v3args,...v4args),true);
-  const execute=()=>account.connect(owner).executeAuthorized(cp,signature,
-   ...v3args,...v4args,destination,0n,callData);
-  if(shouldRevert){
+  const signatureToUse=mode==="invalid-signature" ? await target.signTypedData(domain,types,cp) : signature;
+  if(mode==="untrusted-validator") await(await registry.connect(accountSigner).setValidatorSigner(validator.address,false)).wait();
+  const caller=mode==="unauthorized-caller" ? target : owner;
+  const executionTarget=mode==="tampered-target" ? validator.address : destination;
+  const execute=()=>account.connect(caller).executeAuthorized(cp,signatureToUse,
+   ...v3args,...v4args,executionTarget,0n,callData);
+  if(!["success","rollback"].includes(mode)){
+   await assert.rejects(async()=>{const tx=await execute();await tx.wait();},mode+" must reject");
+   assert.equal(await account.nonce(),0n,"Rejected authorization cannot advance account nonce");
+   assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),false,"Rejected authorization cannot consume nullifier");
+   assert.equal(await registry.consumedCheckpoints(await registry.checkpointDigest(cp)),false,"Rejected authorization cannot consume checkpoint");
+   assert.equal(await registry.consumedCheckpointNonces(account.target,account.target,0n),false,"Rejected authorization cannot consume checkpoint nonce");
+  }else if(shouldRevert){
    await assert.rejects(async()=>{const tx=await execute();await tx.wait();},"Reverting target must reject execution");
    assert.equal(await account.nonce(),0n,"Account nonce must roll back");
    assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),false,"Nullifier must roll back");
