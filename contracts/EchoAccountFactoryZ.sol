@@ -26,7 +26,27 @@ contract EchoAccountFactoryZ is EIP712 {
 
     // Deployment authority is a temporary security gate, not a substitute
     // for reviewed governance or an independent audit.
-    address public immutable stakingCodeAuthority;
+    address public stakingCodeAuthority;
+    address public pendingStakingCodeAuthority;
+    event StakingCodeAuthorityTransferStarted(address indexed currentAuthority, address indexed proposedAuthority);
+    event StakingCodeAuthorityTransferred(address indexed previousAuthority, address indexed newAuthority);
+
+    function transferStakingCodeAuthority(address proposed) external {
+        if (msg.sender != stakingCodeAuthority || proposed == address(0))
+            revert InvalidConfiguration();
+        pendingStakingCodeAuthority = proposed;
+        emit StakingCodeAuthorityTransferStarted(msg.sender, proposed);
+    }
+
+    function acceptStakingCodeAuthority() external {
+        if (msg.sender != pendingStakingCodeAuthority || msg.sender == address(0))
+            revert InvalidConfiguration();
+        address previous = stakingCodeAuthority;
+        stakingCodeAuthority = msg.sender;
+        pendingStakingCodeAuthority = address(0);
+        emit StakingCodeAuthorityTransferred(previous, msg.sender);
+    }
+
     mapping(bytes32 => bool) public approvedStakingCodehash;
     event StakingCodehashApproval(bytes32 indexed codehash, bool approved);
 
