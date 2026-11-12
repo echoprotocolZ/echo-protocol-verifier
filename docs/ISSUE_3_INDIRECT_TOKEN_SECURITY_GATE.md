@@ -19,6 +19,14 @@ Status: **OPEN — NOT PRODUCTION-READY**.
 
 This is a confirmed production-code-path authorization/accounting weakness under the tested legacy-allowance precondition, not evidence of a publicly exploitable deployment or a bypass without valid proofs, an allowlisted target, and an allowance. The security branch must not be considered release-ready.
 
+## Additional Option A review finding: staking target identity
+
+The strict execution policy currently permits a call with the `stake(uint256)` selector to any code-bearing target that also passes the account-scoped target/selector policy. The atomic stake helper checks `echoToken()`, inherited allowance zero for the **monitored** token, exact monitored-token balance decrease, and post-call allowance cleanup. These conditions do **not** prove that the target is an independently trusted staking implementation or that it cannot use a **different token's** pre-existing allowance during its `stake` call.
+
+A malicious or compromised staking-like contract could potentially satisfy the monitored-token postconditions while spending unrelated assets if an account already granted it an allowance. This is a **reasoned residual risk**, not yet a demonstrated real-proof exploit. Do not close Issue #3 on the strength of the current 267 passing tests.
+
+**Additional acceptance gate:** require an explicitly reviewed staking target identity bound to the account's authorization policy, not merely the selector or `echoToken()` return value. Establish a governance-controlled, proof-authorized registration or a deliberately immutable target binding with reviewed upgrade/proxy assumptions. Add a real-proof adversarial staking-like contract test that attempts to spend an unmonitored token under a legacy allowance; assert atomic rollback of all balances, allowances, nonce and nullifier. Consider direct token hooks and token-implementation trust separately.
+
 ## Required remediation
 
 1. Choose a fail-closed asset/target policy that prevents authorized indirect calls from moving unbudgeted assets, including via legacy allowances. The current one-monitored-token-per-agent design does not enforce this property.
