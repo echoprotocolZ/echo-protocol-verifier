@@ -4,6 +4,11 @@ pragma solidity ^0.8.24;
 import "./EchoSmartAccountV4.sol";
 import "./EchoGeographicZoneV4.sol";
 
+interface IEchoReviewedStakingFactory {
+    function isApprovedStakingTarget(address target) external view returns (bool);
+}
+
+
 contract EchoSmartAccountZ is EchoSmartAccountV4 {
     address public immutable deploymentFactory;
     bool public initialized;
@@ -65,7 +70,8 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
 
     function setTrustedStakingTarget(address agent, address target) external {
         if (msg.sender != address(this)) revert Unauthorized();
-        if (agent == address(0) || target == address(0) || target.code.length == 0)
+        if (agent == address(0) || target == address(0) || target.code.length == 0 ||
+            !IEchoReviewedStakingFactory(deploymentFactory).isApprovedStakingTarget(target))
             revert Unauthorized();
         // A change requires a new proof-authorized administrative transaction.
         trustedStakingTarget[agent] = target;
@@ -525,7 +531,8 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         bool atomicStake =
             operation == bytes4(keccak256("stake(uint256)")) &&
             target.code.length != 0 &&
-            target == trustedStakingTarget[delegatee];
+            target == trustedStakingTarget[delegatee] &&
+            IEchoReviewedStakingFactory(deploymentFactory).isApprovedStakingTarget(target);
 
         if (!monitoredTransfer && !atomicStake) revert Unauthorized();
         if (data.length >= 4) {
@@ -710,7 +717,8 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         if (!initialized || msg.sender != owner) revert Unauthorized();
         if (checkpoint.account != address(this) ||
             checkpoint.delegatee == address(0) ||
-            target == address(0) || target.code.length == 0)
+            target == address(0) || target.code.length == 0 ||
+            !IEchoReviewedStakingFactory(deploymentFactory).isApprovedStakingTarget(target))
             revert Unauthorized();
 
         bytes memory callData = abi.encodeWithSelector(
