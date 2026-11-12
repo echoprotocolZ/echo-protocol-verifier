@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const assert = require("node:assert/strict");
 
 describe("Echo Protocol Z post-initialization delegate regression", function () {
   async function deploy(name, ...args) {
@@ -76,7 +77,10 @@ describe("Echo Protocol Z post-initialization delegate regression", function () 
     const { owner, agent, replacement, bridge, account } = await fixture();
     const address = await account.getAddress();
     const data = bridge.interface.encodeFunctionData("setAuthorizedDelegatee", [replacement.address, true]);
-    await expect(account.connect(owner).initialize([bridge.target], [data])).to.be.reverted;
+    await assert.rejects(async () => {
+      const tx = await account.connect(owner).initialize([bridge.target], [data]);
+      await tx.wait();
+    });
     expect(await bridge.authorizedDelegatees(address, replacement.address)).to.equal(false);
     expect(await bridge.authorizedDelegatees(address, agent.address)).to.equal(true);
   });
@@ -97,8 +101,11 @@ describe("Echo Protocol Z post-initialization delegate regression", function () 
     const data = agentPolicies.interface.encodeFunctionData("setTargetPermission",
       [agent.address, outsider.address, true]);
     for (const caller of [outsider, owner]) {
-      await expect(account.connect(caller).executeProofAuthorizedAgentPolicyUpdate(
-        checkpoint, "0x", proof, data)).to.be.reverted;
+      await assert.rejects(async () => {
+        const tx = await account.connect(caller).executeProofAuthorizedAgentPolicyUpdate(
+          checkpoint, "0x", proof, data);
+        await tx.wait();
+      });
       expect(await account.nonce()).to.equal(nonceBefore);
     }
   });
