@@ -42,7 +42,6 @@ async function main(){
  console.log("Existing bridge:",bridgeAddress);
  console.log("Proposed owner:",owner);
  console.log("Proposed validator:",validator);
- console.log("Existing checkpoint registry owner:",await retry("registry owner",()=>registry.owner()));
  console.log("Simulating account constructor using eth_call (no broadcast)...");
  try{
   await retry("constructor simulation",()=>ethers.provider.call({from:deployer.address,data:tx.data,gasLimit:12000000n}));
