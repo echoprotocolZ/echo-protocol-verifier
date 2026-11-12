@@ -2423,6 +2423,24 @@ describe("Echo Protocol Z positive initialization", function () {
         assert.equal(await ethers.provider.send("evm_revert", [snapshot]), true);
       }
 
+      // Bind the reviewed staking fixture through a genuine V3/V4
+      // proof-authorized owner administration call.
+      const stakingBindingData = account.interface.encodeFunctionData(
+        "setTrustedStakingTarget", [agent.address, echoStakingMock.target]
+      );
+      const stakingBindingAuth = await buildAuthorization({
+        ethers, account, agent, validator, registry,
+        target: account.target, value: 0n, data: stakingBindingData,
+        zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
+      });
+      await (await account.connect(owner).executeProofAuthorizedStakingTargetUpdate(
+        stakingBindingAuth.checkpoint,
+        stakingBindingAuth.signature,
+        stakingBindingAuth.proof,
+        echoStakingMock.target
+      )).wait();
+      assert.equal(await account.trustedStakingTarget(agent.address), echoStakingMock.target);
+
       const stakeAmount = ethers.parseEther("1000");
 
       // Milestone 8: staking authorization now performs
