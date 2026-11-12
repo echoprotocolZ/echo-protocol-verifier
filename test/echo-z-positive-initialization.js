@@ -404,6 +404,37 @@ describe("Echo Protocol Z positive initialization", function () {
 
 
 
+    // Governance handoff: no unilateral takeover and no stale approver.
+    const authoritySnapshot = await ethers.provider.send("evm_snapshot", []);
+    try {
+      const initialAuthority = await factory.stakingCodeAuthority();
+      assert.equal(initialAuthority, owner.address);
+      await assert.rejects(async () => {
+        await factory.connect(outsider).transferStakingCodeAuthority(outsider.address);
+      });
+      await assert.rejects(async () => {
+        await factory.connect(owner).transferStakingCodeAuthority(ethers.ZeroAddress);
+      });
+      await (await factory.connect(owner).transferStakingCodeAuthority(validator.address)).wait();
+      assert.equal(await factory.stakingCodeAuthority(), owner.address);
+      await assert.rejects(async () => {
+        await factory.connect(outsider).acceptStakingCodeAuthority();
+      });
+      await (await factory.connect(validator).acceptStakingCodeAuthority()).wait();
+      assert.equal(await factory.stakingCodeAuthority(), validator.address);
+      assert.equal(await factory.pendingStakingCodeAuthority(), ethers.ZeroAddress);
+      await assert.rejects(async () => {
+        await factory.connect(owner).setStakingCodehashApproval(ethers.id("stale"), true);
+      });
+      await (await factory.connect(validator).setStakingCodehashApproval(
+        ethers.id("reviewed-fixture"), true
+      )).wait();
+      assert.equal(await factory.approvedStakingCodehash(ethers.id("reviewed-fixture")), true);
+      console.log("PASS: two-step staking approval authority handoff");
+    } finally {
+      assert.equal(await ethers.provider.send("evm_revert", [authoritySnapshot]), true);
+    }
+
     // Milestone 6: local ECHO token and staking fixtures.
     const echoTokenMock = await deploy("EchoTokenTestMock");
     const echoStakingMock = await deploy(
