@@ -24,7 +24,27 @@ contract EchoAccountFactoryZ is EIP712 {
     error AuthorizationExpired();
     error InvalidSignature();
 
-    constructor() EIP712("EchoAccountFactoryZ", "1") {}
+    // Deployment authority is a temporary security gate, not a substitute
+    // for reviewed governance or an independent audit.
+    address public immutable stakingCodeAuthority;
+    mapping(bytes32 => bool) public approvedStakingCodehash;
+    event StakingCodehashApproval(bytes32 indexed codehash, bool approved);
+
+    function setStakingCodehashApproval(bytes32 codehash, bool approved) external {
+        if (msg.sender != stakingCodeAuthority || codehash == bytes32(0))
+            revert InvalidConfiguration();
+        approvedStakingCodehash[codehash] = approved;
+        emit StakingCodehashApproval(codehash, approved);
+    }
+
+    function isApprovedStakingTarget(address target) external view returns (bool) {
+        return target.code.length != 0 &&
+            approvedStakingCodehash[target.codehash];
+    }
+
+    constructor() EIP712("EchoAccountFactoryZ", "1") {
+        stakingCodeAuthority = msg.sender;
+    }
 
     function configurationHash(
         address[] calldata targets,
