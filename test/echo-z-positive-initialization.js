@@ -2524,6 +2524,45 @@ describe("Echo Protocol Z positive initialization", function () {
         deadline: stakingDeadline
       });
 
+      // Revocation is enforced at execution, even with a valid prior proof.
+      const revocationSnapshot = await ethers.provider.send("evm_snapshot", []);
+      try {
+        const reviewedHash = ethers.keccak256(
+          await ethers.provider.getCode(echoStakingMock.target)
+        );
+        const nonceBeforeRevocation = await account.nonce();
+        const tokenBeforeRevocation = await echoTokenMock.balanceOf(account.target);
+        const stakeBeforeRevocation = await echoStakingMock.getValidatorStake(account.target);
+        const allowanceBeforeRevocation = await echoTokenMock.allowance(
+          account.target, echoStakingMock.target
+        );
+        await (await factory.setStakingCodehashApproval(reviewedHash, false)).wait();
+        assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), false);
+        const rp = stakeAuth.proof;
+        await assert.rejects(async () => {
+          await (await account.connect(agent).executeAuthorized(
+            stakeAuth.checkpoint, stakeAuth.signature,
+            rp.v3A, rp.v3B, rp.v3C, rp.v3Signals,
+            rp.v4A, rp.v4B, rp.v4C, rp.v4Signals,
+            echoStakingMock.target, 0, stakeData
+          )).wait();
+        });
+        assert.equal(await account.nonce(), nonceBeforeRevocation);
+        assert.equal(await echoTokenMock.balanceOf(account.target), tokenBeforeRevocation);
+        assert.equal(await echoStakingMock.getValidatorStake(account.target), stakeBeforeRevocation);
+        assert.equal(
+          await echoTokenMock.allowance(account.target, echoStakingMock.target),
+          allowanceBeforeRevocation
+        );
+        assert.equal(await v4Bridge.consumedNullifiers(rp.v3Signals[2]), false);
+        await assert.rejects(async () => {
+          await factory.connect(outsider).setStakingCodehashApproval(reviewedHash, true);
+        });
+        console.log("PASS: revoked staking code rejected; nonce and nullifier preserved");
+      } finally {
+        assert.equal(await ethers.provider.send("evm_revert", [revocationSnapshot]), true);
+      }
+
       // Unauthorized wallet must not execute the agent's valid proof.
       const nonceBeforeUnauthorized = await account.nonce();
 
