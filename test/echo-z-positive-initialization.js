@@ -451,6 +451,55 @@ describe("Echo Protocol Z positive initialization", function () {
       echoStakingMock.target, echoTokenMock.target, true
     )).wait();
     assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), true);
+    // Same reviewed bytecode does not confer approval on a different
+    // deployment, including one initialized with a different token.
+    const duplicateStaking = await deploy(
+      "EchoStakingTestMock", echoTokenMock.target
+    );
+    const alternateToken = await deploy("EchoTokenTestMock");
+    const alternateStaking = await deploy(
+      "EchoStakingTestMock", alternateToken.target
+    );
+    assert.equal(
+      ethers.keccak256(await ethers.provider.getCode(duplicateStaking.target)),
+      ethers.keccak256(await ethers.provider.getCode(echoStakingMock.target))
+    );
+    assert.equal(await factory.isApprovedStakingTarget(duplicateStaking.target), false);
+    assert.equal(await factory.isApprovedStakingTarget(alternateStaking.target), false);
+    await assert.rejects(async () => {
+      await factory.setStakingTargetApproval(alternateStaking.target, echoTokenMock.target, true);
+    });
+    await assert.rejects(async () => {
+      await factory.connect(outsider).setStakingTargetApproval(
+        duplicateStaking.target, echoTokenMock.target, true
+      );
+    });
+    console.log("PASS: duplicate staking bytecode does not inherit target approval");
+
+    // Emergency target-specific revocation must not revoke other
+    // reviewed targets or alter the global codehash approval.
+    const targetRevocationSnapshot = await ethers.provider.send("evm_snapshot", []);
+    try {
+      await (await factory.setStakingTargetApproval(
+        echoStakingMock.target, echoTokenMock.target, false
+      )).wait();
+      assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), false);
+      assert.equal(await factory.approvedStakingTargetToken(echoStakingMock.target), ethers.ZeroAddress);
+      assert.equal(await factory.isApprovedStakingTarget(duplicateStaking.target), false);
+      assert.equal(
+        await factory.approvedStakingCodehash(
+          ethers.keccak256(await ethers.provider.getCode(echoStakingMock.target))
+        ), true
+      );
+      await (await factory.setStakingTargetApproval(
+        echoStakingMock.target, echoTokenMock.target, true
+      )).wait();
+      assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), true);
+      console.log("PASS: target-specific emergency revocation and reapproval");
+    } finally {
+      assert.equal(await ethers.provider.send("evm_revert", [targetRevocationSnapshot]), true);
+    }
+
 
 
     await (
