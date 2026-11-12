@@ -89,4 +89,65 @@ describe("EchoStaking — verified production bytecode security regressions", fu
     await (await staking.connect(validator).stake(U(1000))).wait();
     assert.equal(await staking.totalStaked(), U(1000));
   });
+  it("slashes exactly 100 ECHO, quarantines validator, and rejects incident replay", async function () {
+    await (await staking.connect(validator).stake(U(1000))).wait();
+    const incident = ethers.id("production-regression-incident");
+    await (await staking.slash(validator.address, incident)).wait();
+    assert.equal(await staking.getValidatorStake(validator.address), U(900));
+    assert.equal(await staking.totalStaked(), U(900));
+    assert.equal(await staking.rewardPool(), U(100));
+    assert.equal(await staking.isNodeQuarantined(validator.address), true);
+    assert.equal(await staking.isValidatorActive(validator.address), false);
+    assert.equal(await staking.processedIncidents(incident), true);
+    await assert.rejects(async () => { await (await staking.slash(validator.address, incident)).wait(); });
+    await assert.rejects(async () => { await (await staking.connect(validator).stake(U(100))).wait(); });
+    assert.equal(await staking.totalStaked(), U(900));
+  });
+
+  it("requires owner reactivation and collateral minimum for active status", async function () {
+    await (await staking.connect(validator).stake(U(1000))).wait();
+    await (await staking.slash(validator.address, ethers.id("reactivation-incident"))).wait();
+    await assert.rejects(async () => { await (await staking.connect(outsider).reactivateValidator(validator.address)).wait(); });
+    await (await staking.reactivateValidator(validator.address)).wait();
+    assert.equal(await staking.isNodeQuarantined(validator.address), false);
+    assert.equal(await staking.isValidatorActive(validator.address), false);
+    await (await staking.connect(validator).stake(U(100))).wait();
+    assert.equal(await staking.isValidatorActive(validator.address), true);
+    assert.equal(await staking.totalStaked(), U(1000));
+  });
+
+  it("accounts for reward funding and distribution without consuming staked principal", async function () {
+    await (await staking.connect(validator).stake(U(1000))).wait();
+    await (await token.approve(staking.target, U(250))).wait();
+    await (await staking.fundRewards(U(250))).wait();
+    assert.equal(await staking.rewardPool(), U(250));
+    await (await staking.distributeReward(validator.address, U(60))).wait();
+    assert.equal(await staking.rewardPool(), U(190));
+    assert.equal(await staking.totalStaked(), U(1000));
+    assert.equal(await token.balanceOf(staking.target), U(1190));
+    await assert.rejects(async () => { await (await staking.distributeReward(validator.address, U(191))).wait(); });
+    assert.equal(await staking.rewardPool(), U(190));
+  });
+
+  it("enforces drift threshold and prevents replay of processed incidents", async function () {
+    await (await staking.connect(validator).stake(U(1000))).wait();
+    const incident=ethers.id("drift-boundary");
+    await assert.rejects(async () => { await (await staking.slashNode(validator.address, 500, incident)).wait(); });
+    assert.equal(await staking.processedIncidents(incident), false);
+    await (await staking.slashNode(validator.address, 501, incident)).wait();
+    assert.equal(await staking.processedIncidents(incident), true);
+    await assert.rejects(async () => { await (await staking.slashNode(validator.address, 501, incident)).wait(); });
+  });
+
+  it("allows rescue of genuine excess ECHO while preserving reserved accounting", async function () {
+    await (await staking.connect(validator).stake(U(1000))).wait();
+    await (await token.transfer(staking.target, U(25))).wait();
+    assert.equal(await staking.availableExcessEcho(), U(25));
+    await assert.rejects(async () => { await (await staking.connect(outsider).rescueExcessTokens(token.target, outsider.address, U(1))).wait(); });
+    await (await staking.rescueExcessTokens(token.target, owner.address, U(25))).wait();
+    assert.equal(await staking.availableExcessEcho(), 0n);
+    assert.equal(await staking.totalStaked(), U(1000));
+    assert.equal(await token.balanceOf(staking.target), U(1000));
+  });
+
 });
