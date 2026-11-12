@@ -5,7 +5,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { id, Interface } = require("ethers");
-const selector = (process.argv[2] || "0x157a3759").toLowerCase();
+const raw = (process.argv[2] || "0x157a3759").trim().replace(/[\\u200B-\\u200D\\uFEFF]/g, "");
+const selector = (raw.match(/0x[0-9a-fA-F]{8}/) || [raw])[0].toLowerCase();
 if (!/^0x[0-9a-f]{8}$/.test(selector)) throw Error("Expected 4-byte hex selector");
 const root = "artifacts/contracts";
 let found = 0;
