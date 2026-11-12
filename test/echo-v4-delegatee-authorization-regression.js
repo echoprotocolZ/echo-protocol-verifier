@@ -29,8 +29,12 @@ describe("Echo V4 delegatee authorization regression", function () {
     });
     // An unrelated EOA cannot grant permissions for this account.
     await bridge.connect(delegatee).setAuthorizedDelegatee(delegatee.address, true);
-    expect(await bridge.authorizedDelegatees(account.address, delegatee.address)).to.equal(false);
-    await expect(bridge.connect(account).authorize(...args)).to.be.revertedWithCustomError(bridge, "UnauthorizedDelegatee");
+    assert.equal(await bridge.authorizedDelegatees(account.address, delegatee.address), false);
+    await assert.rejects(() => bridge.connect(account).authorize.staticCall(...args), (error) => {
+      const data = error.data || error.info?.error?.data;
+      assert.equal(String(data).slice(0, 10).toLowerCase(), bridge.interface.getError("UnauthorizedDelegatee").selector.toLowerCase());
+      return true;
+    });
     // The account itself may opt in. This test uses an EOA as the account
     // only to exercise bridge permission semantics, NOT a smart-account admin path.
     await bridge.connect(account).setAuthorizedDelegatee(delegatee.address, true);
