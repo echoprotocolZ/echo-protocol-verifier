@@ -133,6 +133,42 @@ describe("Echo Protocol Z post-initialization delegate regression", function () 
     assert.equal(await account.nonce(), nonceBefore);
   });
 
+  it("rejects an unallowlisted indirect token pull at the real execution entrypoint", async function () {
+    const { owner, agent, outsider, account, agentPolicies } = await fixture();
+    const token = await deploy("EchoTokenTestMock");
+    const spender = await deploy("EchoIndirectTokenSpenderTestMock");
+    const accountAddress = await account.getAddress();
+    await (await token.transfer(accountAddress, 100n)).wait();
+    const nonceBefore = await account.nonce();
+    const balanceBefore = await token.balanceOf(accountAddress);
+    const recipientBefore = await token.balanceOf(outsider.address);
+    const data = spender.interface.encodeFunctionData("pull", [
+      token.target, accountAddress, outsider.address, 10n
+    ]);
+    const checkpoint = {
+      account: accountAddress, delegatee: agent.address,
+      zoneHash: ethers.ZeroHash, checkpointCommitment: ethers.ZeroHash,
+      authorizationCommitment: ethers.ZeroHash, timestamp: 0, nonce: nonceBefore
+    };
+    const zero2 = [0n, 0n];
+    const zeroB = [[0n, 0n], [0n, 0n]];
+    assert.equal(
+      await agentPolicies.approvedTargets(accountAddress, agent.address, spender.target), false
+    );
+    await assert.rejects(async () => {
+      const tx = await account.connect(owner).executeAuthorized(
+        checkpoint, "0x",
+        zero2, zeroB, zero2, Array(20).fill(0n),
+        zero2, zeroB, zero2, Array(5).fill(0n),
+        spender.target, 0n, data
+      );
+      await tx.wait();
+    });
+    assert.equal(await account.nonce(), nonceBefore);
+    assert.equal(await token.balanceOf(accountAddress), balanceBefore);
+    assert.equal(await token.balanceOf(outsider.address), recipientBefore);
+  });
+
   it("rejects reinitialization that attempts to replace the delegate", async function () {
     const { owner, agent, replacement, bridge, account } = await fixture();
     const address = await account.getAddress();
