@@ -410,6 +410,12 @@ describe("Echo Protocol Z positive initialization", function () {
       "EchoStakingTestMock",
       echoTokenMock.target
     );
+    // Local test explicitly approves the reviewed staking fixture's
+    // runtime bytecode. Production approvals require independent review.
+    await (await factory.setStakingCodehashApproval(
+      ethers.keccak256(await ethers.provider.getCode(echoStakingMock.target)),
+      true
+    )).wait();
 
     await (
       await echoTokenMock.mint(
@@ -2465,6 +2471,10 @@ describe("Echo Protocol Z positive initialization", function () {
           await ethers.provider.send("hardhat_stopImpersonatingAccount", [account.target]);
         }
 
+        assert.equal(
+          await factory.isApprovedStakingTarget(maliciousStake.target), false,
+          "Malicious staking implementation must not be approved"
+        );
         const maliciousBindingData = account.interface.encodeFunctionData(
           "setTrustedStakingTarget", [agent.address, maliciousStake.target]
         );
@@ -2473,53 +2483,19 @@ describe("Echo Protocol Z positive initialization", function () {
           target: account.target, value: 0n, data: maliciousBindingData,
           zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
         });
-        await (await account.connect(owner).executeProofAuthorizedStakingTargetUpdate(
-          maliciousBindingAuth.checkpoint, maliciousBindingAuth.signature,
-          maliciousBindingAuth.proof, maliciousStake.target
-        )).wait();
-
-        await authorizePolicyUpdate(
-          agentPolicyRegistry.interface.encodeFunctionData(
-            "setTargetPermission", [agent.address, maliciousStake.target, true]
-          )
-        );
-        await authorizePolicyUpdate(
-          agentPolicyRegistry.interface.encodeFunctionData(
-            "setSelectorPermission",
-            [agent.address, maliciousStake.target,
-              maliciousStake.interface.getFunction("stake").selector, true]
-          )
-        );
-
-        const maliciousStakeData = maliciousStake.interface.encodeFunctionData(
-          "stake", [ethers.parseEther("1000")]
-        );
-        const maliciousAuth = await buildAuthorization({
-          ethers, account, agent, validator, registry,
-          target: maliciousStake.target, value: 0n, data: maliciousStakeData,
-          zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
-        });
-        const extraBefore = await extraToken.balanceOf(account.target);
-        const recipientBefore = await extraToken.balanceOf(outsider.address);
-        const monitoredBefore = await echoTokenMock.balanceOf(account.target);
-        const usedBefore = await account.tokenSpendingUsed(agent.address, echoTokenMock.target);
-        const nonceBefore = await account.nonce();
-        const p = maliciousAuth.proof;
+        const bindingNonceBefore = await account.nonce();
         await assert.rejects(async () => {
-          await (await account.connect(agent).executeAuthorized(
-          maliciousAuth.checkpoint, maliciousAuth.signature,
-          p.v3A, p.v3B, p.v3C, p.v3Signals,
-          p.v4A, p.v4B, p.v4C, p.v4Signals,
-          maliciousStake.target, 0, maliciousStakeData
+          await (await account.connect(owner).executeProofAuthorizedStakingTargetUpdate(
+            maliciousBindingAuth.checkpoint, maliciousBindingAuth.signature,
+            maliciousBindingAuth.proof, maliciousStake.target
           )).wait();
-        }, /Unauthorized|ExecutionFailed|revert/);
-        assert.equal(await extraToken.balanceOf(account.target), extraBefore);
-        assert.equal(await extraToken.balanceOf(outsider.address), recipientBefore);
-        assert.equal(await echoTokenMock.balanceOf(account.target), monitoredBefore);
-        assert.equal(await account.tokenSpendingUsed(agent.address, echoTokenMock.target), usedBefore);
-        assert.equal(await account.nonce(), nonceBefore);
-        assert.equal(await v4Bridge.consumedNullifiers(p.v3Signals[2]), false);
-        console.log("PASS: malicious staking target rejected with atomic rollback");
+        });
+        assert.equal(await account.nonce(), bindingNonceBefore);
+        assert.equal(await account.trustedStakingTarget(agent.address), echoStakingMock.target);
+        assert.equal(await v4Bridge.consumedNullifiers(maliciousBindingAuth.proof.v3Signals[2]), false);
+
+        // Target registration itself must fail before any staking call.
+                console.log("PASS: malicious staking target rejected with atomic rollback");
       } finally {
         assert.equal(await ethers.provider.send("evm_revert", [maliciousSnapshot]), true);
       }
