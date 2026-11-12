@@ -447,6 +447,11 @@ describe("Echo Protocol Z positive initialization", function () {
       ethers.keccak256(await ethers.provider.getCode(echoStakingMock.target)),
       true
     )).wait();
+    await (await factory.setStakingTargetApproval(
+      echoStakingMock.target, echoTokenMock.target, true
+    )).wait();
+    assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), true);
+
 
     await (
       await echoTokenMock.mint(
@@ -2502,6 +2507,8 @@ describe("Echo Protocol Z positive initialization", function () {
           await ethers.provider.send("hardhat_stopImpersonatingAccount", [account.target]);
         }
 
+        // A matching bytecode hash alone cannot authorize an address.
+        assert.equal(await factory.approvedStakingTargetCodehash(maliciousStake.target), ethers.ZeroHash);
         assert.equal(
           await factory.isApprovedStakingTarget(maliciousStake.target), false,
           "Malicious staking implementation must not be approved"
