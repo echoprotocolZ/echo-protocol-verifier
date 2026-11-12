@@ -58,6 +58,20 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         emit TokenSpendingBudgetUpdated(agent, token, budget);
     }
 
+    // Option A: a staking selector alone does not establish target trust.
+    // Bind one explicitly reviewed staking implementation per delegatee.
+    mapping(address => address) public trustedStakingTarget;
+    event TrustedStakingTargetUpdated(address indexed agent, address indexed target);
+
+    function setTrustedStakingTarget(address agent, address target) external {
+        if (msg.sender != address(this)) revert Unauthorized();
+        if (agent == address(0) || target == address(0) || target.code.length == 0)
+            revert Unauthorized();
+        // A change requires a new proof-authorized administrative transaction.
+        trustedStakingTarget[agent] = target;
+        emit TrustedStakingTargetUpdated(agent, target);
+    }
+
     event TokenSpendingRecorded(
         address indexed agent,
         address indexed token,
@@ -510,7 +524,8 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
             target == monitored && operation == 0xa9059cbb;
         bool atomicStake =
             operation == bytes4(keccak256("stake(uint256)")) &&
-            target.code.length != 0;
+            target.code.length != 0 &&
+            target == trustedStakingTarget[delegatee];
 
         if (!monitoredTransfer && !atomicStake) revert Unauthorized();
         if (data.length >= 4) {
@@ -683,6 +698,36 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         (bool success, bytes memory output) =
             address(this).call(budgetData);
 
+        if (!success) revert ExecutionFailed(output);
+    }
+
+    function executeProofAuthorizedStakingTargetUpdate(
+        IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        AgentPolicyProof calldata proof,
+        address target
+    ) external nonReentrantExecution {
+        if (!initialized || msg.sender != owner) revert Unauthorized();
+        if (checkpoint.account != address(this) ||
+            checkpoint.delegatee == address(0) ||
+            target == address(0) || target.code.length == 0)
+            revert Unauthorized();
+
+        bytes memory callData = abi.encodeWithSelector(
+            this.setTrustedStakingTarget.selector,
+            checkpoint.delegatee,
+            target
+        );
+        uint256 currentNonce = nonce;
+        bool authorized = authorizationBridge.authorize(
+            checkpoint, signature,
+            proof.v3A, proof.v3B, proof.v3C, proof.v3Signals,
+            proof.v4A, proof.v4B, proof.v4C, proof.v4Signals,
+            address(this), 0, callData, currentNonce
+        );
+        if (!authorized) revert AuthorizationFailed();
+        nonce = currentNonce + 1;
+        (bool success, bytes memory output) = address(this).call(callData);
         if (!success) revert ExecutionFailed(output);
     }
 
