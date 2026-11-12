@@ -2346,6 +2346,111 @@ describe("Echo Protocol Z positive initialization", function () {
       console.log("PASS: Real dual-proof approved indirect pull without allowance reverts");
       // Not a proof of safety when a pre-existing allowance is present.
 
+      // Model a legacy allowance using Hardhat impersonation only to seed
+      // the fixture. All tested pulls go through the real proof bridge.
+      const snapshot = await ethers.provider.send("evm_snapshot", []);
+      try {
+        await ethers.provider.send("hardhat_setBalance", [
+          account.target, ethers.toQuantity(ethers.parseEther("1"))
+        ]);
+        const unmonitoredToken = await deploy("EchoTokenTestMock");
+        await (await unmonitoredToken.mint(account.target, 1n)).wait();
+        const monitoredAllowance = budgetAmount + 1n;
+
+        await ethers.provider.send("hardhat_impersonateAccount", [account.target]);
+        try {
+          const accountSigner = await ethers.getSigner(account.target);
+          await (await echoTokenMock.connect(accountSigner)
+            .approve(indirectSpender.target, monitoredAllowance)).wait();
+          await (await unmonitoredToken.connect(accountSigner)
+            .approve(indirectSpender.target, 1n)).wait();
+        } finally {
+          await ethers.provider.send("hardhat_stopImpersonatingAccount", [account.target]);
+        }
+
+        async function readPullState(token) {
+          return {
+            nonce: await account.nonce(),
+            balance: await token.balanceOf(account.target),
+            received: await token.balanceOf(outsider.address),
+            allowance: await token.allowance(account.target, indirectSpender.target),
+            used: await account.tokenSpendingUsed(agent.address, token.target)
+          };
+        }
+
+        async function provePull(token, amount) {
+          const data = indirectSpender.interface.encodeFunctionData("pull", [
+            token.target, account.target, outsider.address, amount
+          ]);
+          const auth = await buildAuthorization({
+            ethers, account, agent, validator, registry,
+            target: indirectSpender.target, value: 0n, data,
+            zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
+          });
+          const p = auth.proof;
+          return {
+            nullifier: p.v3Signals[2],
+            async execute() {
+              const tx = await account.connect(agent).executeAuthorized(
+                auth.checkpoint, auth.signature,
+                p.v3A, p.v3B, p.v3C, p.v3Signals,
+                p.v4A, p.v4B, p.v4C, p.v4Signals,
+                indirectSpender.target, 0, data
+              );
+              await tx.wait();
+            }
+          };
+        }
+
+        const monitoredBefore = await readPullState(echoTokenMock);
+        assert.equal(monitoredBefore.allowance, monitoredAllowance);
+        assert.ok(monitoredBefore.balance >= monitoredAllowance);
+        const firstAmount = budgetAmount - monitoredBefore.used;
+        assert.ok(firstAmount > 0n);
+
+        const inBudgetPull = await provePull(echoTokenMock, firstAmount);
+        await inBudgetPull.execute();
+        const budgetExhausted = await readPullState(echoTokenMock);
+        assert.deepEqual(budgetExhausted, {
+          nonce: monitoredBefore.nonce + 1n,
+          balance: monitoredBefore.balance - firstAmount,
+          received: monitoredBefore.received + firstAmount,
+          allowance: monitoredBefore.allowance - firstAmount,
+          used: budgetAmount
+        });
+        assert.equal(await v4Bridge.consumedNullifiers(inBudgetPull.nullifier), true);
+
+        const overBudgetPull = await provePull(echoTokenMock, 1n);
+        await assert.rejects(overBudgetPull.execute, /SpendingBudgetExceeded/);
+        assert.deepEqual(await readPullState(echoTokenMock), budgetExhausted);
+        assert.equal(await v4Bridge.consumedNullifiers(overBudgetPull.nullifier), false);
+        console.log("PASS: Real dual-proof legacy monitored allowance respects cumulative budget");
+
+        const unmonitoredBefore = await readPullState(unmonitoredToken);
+        assert.equal(await account.monitoredToken(agent.address), echoTokenMock.target);
+        assert.equal(unmonitoredBefore.allowance, 1n);
+        const unmonitoredPull = await provePull(unmonitoredToken, 1n);
+
+        // Characterize the open release gate. This should become a rejection
+        // assertion once the supported-asset policy is enforced.
+        await unmonitoredPull.execute();
+        assert.deepEqual(await readPullState(unmonitoredToken), {
+          nonce: unmonitoredBefore.nonce + 1n,
+          balance: unmonitoredBefore.balance - 1n,
+          received: unmonitoredBefore.received + 1n,
+          allowance: 0n,
+          used: unmonitoredBefore.used
+        });
+        assert.equal(await v4Bridge.consumedNullifiers(unmonitoredPull.nullifier), true);
+        assert.deepEqual(await readPullState(echoTokenMock), {
+          ...budgetExhausted,
+          nonce: budgetExhausted.nonce + 1n
+        });
+        console.log("OPEN RELEASE GATE: Real dual-proof legacy allowance bypasses unmonitored token accounting");
+      } finally {
+        assert.equal(await ethers.provider.send("evm_revert", [snapshot]), true);
+      }
+
       const stakeAmount = ethers.parseEther("1000");
 
       // Milestone 8: staking authorization now performs
