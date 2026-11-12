@@ -496,9 +496,23 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         // Fail closed for standard ERC-20 spending selectors.
         // Only direct transfer of the budget-monitored token is supported.
         // Persistent allowances are forbidden even for that token.
-        // This does not constrain indirect spending through arbitrary
-        // allowlisted target contracts; such targets require separate review.
+        // Option A: fail closed. Generic allowlisted external calls can
+        // trigger nested transfers of tokens that this account does not
+        // monitor. Permit only the monitored token's direct transfer and
+        // the separately postcondition-checked atomic staking route.
         address monitored = monitoredToken[delegatee];
+        if (value != 0 || data.length != 36 || monitored == address(0)) {
+            revert Unauthorized();
+        }
+
+        bytes4 operation = bytes4(data[:4]);
+        bool monitoredTransfer =
+            target == monitored && operation == 0xa9059cbb;
+        bool atomicStake =
+            operation == bytes4(keccak256("stake(uint256)")) &&
+            target.code.length != 0;
+
+        if (!monitoredTransfer && !atomicStake) revert Unauthorized();
         if (data.length >= 4) {
             bytes4 selector = bytes4(data[:4]);
             if (
