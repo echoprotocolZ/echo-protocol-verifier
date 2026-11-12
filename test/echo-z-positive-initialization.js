@@ -7,6 +7,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("Echo Protocol Z positive initialization", function () {
+  this.timeout(180000); // Genuine V3/V4 proof generation can exceed Mocha\'s 40s default.
   it("deploys and initializes all five policies atomically", async function () {
     const [owner, validator, agent, outsider] = await ethers.getSigners();
 
