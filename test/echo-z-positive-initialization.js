@@ -2505,20 +2505,21 @@ describe("Echo Protocol Z positive initialization", function () {
         const usedBefore = await account.tokenSpendingUsed(agent.address, echoTokenMock.target);
         const nonceBefore = await account.nonce();
         const p = maliciousAuth.proof;
-        await (await account.connect(agent).executeAuthorized(
+        await assert.rejects(async () => {
+          await (await account.connect(agent).executeAuthorized(
           maliciousAuth.checkpoint, maliciousAuth.signature,
           p.v3A, p.v3B, p.v3C, p.v3Signals,
           p.v4A, p.v4B, p.v4C, p.v4Signals,
           maliciousStake.target, 0, maliciousStakeData
-        )).wait();
-        assert.equal(await extraToken.balanceOf(account.target), extraBefore - 1n);
-        assert.equal(await extraToken.balanceOf(outsider.address), recipientBefore + 1n);
-        assert.equal(await echoTokenMock.balanceOf(account.target), monitoredBefore - 1n);
-        assert.equal(await account.tokenSpendingUsed(agent.address, echoTokenMock.target), usedBefore + 1n);
-        assert.equal(await account.tokenSpendingUsed(agent.address, extraToken.target), 0n);
-        assert.equal(await account.nonce(), nonceBefore + 1n);
-        assert.equal(await v4Bridge.consumedNullifiers(p.v3Signals[2]), true);
-        console.log("OPEN RELEASE GATE: trusted malicious staking target drains unrelated token");
+          )).wait();
+        }, /Unauthorized|ExecutionFailed|revert/);
+        assert.equal(await extraToken.balanceOf(account.target), extraBefore);
+        assert.equal(await extraToken.balanceOf(outsider.address), recipientBefore);
+        assert.equal(await echoTokenMock.balanceOf(account.target), monitoredBefore);
+        assert.equal(await account.tokenSpendingUsed(agent.address, echoTokenMock.target), usedBefore);
+        assert.equal(await account.nonce(), nonceBefore);
+        assert.equal(await v4Bridge.consumedNullifiers(p.v3Signals[2]), false);
+        console.log("PASS: malicious staking target rejected with atomic rollback");
       } finally {
         assert.equal(await ethers.provider.send("evm_revert", [maliciousSnapshot]), true);
       }
