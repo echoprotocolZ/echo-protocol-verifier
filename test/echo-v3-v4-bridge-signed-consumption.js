@@ -14,13 +14,13 @@ describe("Echo V3/V4 bridge — signed checkpoint consumption and rollback (mock
  ]};
  async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
  async function forward(name,args){return account.forward(registry.target,registry.interface.encodeFunctionData(name,args));}
- async function setupInput(nullifier=33n){
+ async function setupInput(nullifier=33n,nonce=0n){
   const now=BigInt((await ethers.provider.getBlock("latest")).timestamp);
   const chain=(await ethers.provider.getNetwork()).chainId;
   const data="0x12345678",hash=BigInt(ethers.keccak256(data));
   const cp={account:account.target,delegatee:account.target,zoneHash:zone,
-   checkpointCommitment:ethers.id("v4-test-checkpoint"),authorizationCommitment:ethers.id("v4-test-auth"),
-   timestamp:now,nonce:0n};
+   checkpointCommitment:ethers.id("v4-test-checkpoint-"+nonce),authorizationCommitment:ethers.id("v4-test-auth-"+nonce),
+   timestamp:now,nonce};
   const sig=await validator.signTypedData({
    name:"EchoAttestationRegistryV3",version:"1",chainId:chain,verifyingContract:registry.target
   },types,cp);
@@ -29,9 +29,9 @@ describe("Echo V3/V4 bridge — signed checkpoint consumption and rollback (mock
   s[4]=BigInt(account.target);s[5]=BigInt(validator.address);
   s[6]=BigInt(recipient.address);s[7]=0n;
   s[8]=hash&((1n<<128n)-1n);s[9]=hash>>128n;s[10]=chain;
-  s[11]=0n;s[12]=now+3600n;s[16]=now;s[17]=now;s[18]=BigInt(cp.checkpointCommitment);s[19]=now;
+  s[11]=nonce;s[12]=now+3600n;s[16]=now;s[17]=now;s[18]=BigInt(cp.checkpointCommitment);s[19]=now;
   const payload=bridge.interface.encodeFunctionData("authorize",[
-   cp,sig,z2,zb,z2,s,z2,zb,z2,z5,recipient.address,0n,data,0n
+   cp,sig,z2,zb,z2,s,z2,zb,z2,z5,recipient.address,0n,data,nonce
   ]);
   return {cp,sig,s,payload,digest:await registry.checkpointDigest(cp)};
  }
@@ -71,5 +71,28 @@ describe("Echo V3/V4 bridge — signed checkpoint consumption and rollback (mock
   await assert.rejects(async()=>{await(await call(x.payload)).wait();});
   assert.equal(await registry.consumedCheckpoints(x.digest),false);
   assert.equal(await bridge.consumedNullifiers(33n),false);
+ });
+ it("rejects reused nullifier across distinct signed checkpoints and rolls back second checkpoint",async function(){
+  const first=await setupInput(44n,0n);
+  await(await call(first.payload)).wait();
+  const second=await setupInput(44n,1n);
+  assert.notEqual(first.digest,second.digest);
+  assert.equal(await registry.consumedCheckpoints(second.digest),false);
+  await assert.rejects(async()=>{await(await call(second.payload)).wait();});
+  assert.equal(await registry.consumedCheckpoints(first.digest),true);
+  assert.equal(await registry.consumedCheckpoints(second.digest),false);
+  assert.equal(await registry.consumedCheckpointNonces(account.target,account.target,1n),false);
+  assert.equal(await bridge.consumedNullifiers(44n),true);
+ });
+ it("allows a fresh signed checkpoint and distinct nullifier after prior consumption",async function(){
+  const first=await setupInput(51n,0n);
+  await(await call(first.payload)).wait();
+  const second=await setupInput(52n,1n);
+  await(await call(second.payload)).wait();
+  assert.equal(await registry.consumedCheckpoints(first.digest),true);
+  assert.equal(await registry.consumedCheckpoints(second.digest),true);
+  assert.equal(await registry.consumedCheckpointNonces(account.target,account.target,1n),true);
+  assert.equal(await bridge.consumedNullifiers(51n),true);
+  assert.equal(await bridge.consumedNullifiers(52n),true);
  });
 });
