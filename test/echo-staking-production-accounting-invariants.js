@@ -54,6 +54,13 @@ describe("EchoStaking verified production bytecode — accounting invariants",fu
    await ethers.provider.send("evm_increaseTime",[24*3600+2]);
    await ethers.provider.send("evm_mine",[]);
    await(await staking.connect(alice).withdraw(U(500))).wait(); await invariant();
+   // Partial withdrawal resets the 24-hour unbonding cooldown.
+   await assert.rejects(async()=>{
+     await(await staking.connect(alice).withdraw(U(1000))).wait();
+   });
+   await invariant();
+   await ethers.provider.send("evm_increaseTime",[24*3600+2]);
+   await ethers.provider.send("evm_mine",[]);
    await(await staking.connect(alice).withdraw(U(1000))).wait(); await invariant();
    assert.equal(await staking.getValidatorStake(alice.address),0n);
  });
