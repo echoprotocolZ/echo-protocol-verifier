@@ -1,6 +1,18 @@
 const fs = require("fs");
 const hre = require("hardhat");
 const { loadRecords } = require("./amoy-deployment-records");
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function retry(label, fn) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try { return await fn(); } catch (error) {
+      if (!/timeout|rate.limit|429|503|free plan|network error/i.test(error.message || "") || attempt === 5) throw error;
+      const delay = attempt * 3000;
+      console.log("RPC RETRY:", label, "attempt", attempt, "waiting", delay, "ms");
+      await sleep(delay);
+    }
+  }
+}
+
 
 async function main() {
   const r = loadRecords().contracts;
@@ -12,9 +24,9 @@ async function main() {
     throw new Error("Bootstrapped account record invalid");
   const accountAddress = hre.ethers.getAddress(bootstrap.address);
   const account = await hre.ethers.getContractAt("EchoSmartAccountV4Bootstrapped", accountAddress);
-  if ((await account.authorizationBridge()).toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
+  if ((await retry("account authorizationBridge", () => account.authorizationBridge())).toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
     throw new Error("New account bridge mismatch");
-  const accountNonce = await account.nonce();
+  const accountNonce = await retry("account nonce", () => account.nonce());
   const [signer] = await hre.ethers.getSigners();
 
   const expected =
@@ -70,7 +82,7 @@ async function main() {
     signer
   );
 
-  const digest = await registry.checkpointDigest(checkpoint);
+  const digest = await retry("checkpoint digest", () => registry.checkpointDigest(checkpoint));
 
   // Sign the exact digest expected by the deployed registry.
   // SigningMessage would add an Ethereum prefix, so we use
