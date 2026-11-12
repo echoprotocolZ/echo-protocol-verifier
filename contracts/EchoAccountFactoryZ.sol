@@ -38,6 +38,16 @@ contract EchoAccountFactoryZ is EIP712 {
         emit StakingCodeAuthorityTransferStarted(msg.sender, proposed);
     }
 
+    event StakingCodeAuthorityTransferCancelled(address indexed authority, address indexed cancelledNominee);
+
+    function cancelStakingCodeAuthorityTransfer() external {
+        if (msg.sender != stakingCodeAuthority) revert InvalidConfiguration();
+        address cancelledNominee = pendingStakingCodeAuthority;
+        if (cancelledNominee == address(0)) revert InvalidConfiguration();
+        pendingStakingCodeAuthority = address(0);
+        emit StakingCodeAuthorityTransferCancelled(msg.sender, cancelledNominee);
+    }
+
     function acceptStakingCodeAuthority() external {
         if (msg.sender != pendingStakingCodeAuthority || msg.sender == address(0))
             revert InvalidConfiguration();
