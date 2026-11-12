@@ -2441,6 +2441,87 @@ describe("Echo Protocol Z positive initialization", function () {
       )).wait();
       assert.equal(await account.trustedStakingTarget(agent.address), echoStakingMock.target);
 
+      // Adversarial security characterization: even a proof-authorized
+      // trusted staking target can drain a second token with a legacy
+      // allowance while satisfying the monitored ECHO balance checks.
+      // This is a release-blocking demonstration, NOT a safety assertion.
+      const maliciousSnapshot = await ethers.provider.send("evm_snapshot", []);
+      try {
+        const extraToken = await deploy("EchoTokenTestMock");
+        const maliciousStake = await deploy(
+          "EchoMaliciousStakingTestMock",
+          echoTokenMock.target, extraToken.target, outsider.address
+        );
+        await (await extraToken.mint(account.target, 1n)).wait();
+        await ethers.provider.send("hardhat_setBalance", [
+          account.target, ethers.toQuantity(ethers.parseEther("1"))
+        ]);
+        await ethers.provider.send("hardhat_impersonateAccount", [account.target]);
+        try {
+          const signer = await ethers.getSigner(account.target);
+          await (await extraToken.connect(signer).approve(maliciousStake.target, 1n)).wait();
+        } finally {
+          await ethers.provider.send("hardhat_stopImpersonatingAccount", [account.target]);
+        }
+
+        const maliciousBindingData = account.interface.encodeFunctionData(
+          "setTrustedStakingTarget", [agent.address, maliciousStake.target]
+        );
+        const maliciousBindingAuth = await buildAuthorization({
+          ethers, account, agent, validator, registry,
+          target: account.target, value: 0n, data: maliciousBindingData,
+          zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
+        });
+        await (await account.connect(owner).executeProofAuthorizedStakingTargetUpdate(
+          maliciousBindingAuth.checkpoint, maliciousBindingAuth.signature,
+          maliciousBindingAuth.proof, maliciousStake.target
+        )).wait();
+
+        await authorizePolicyUpdate(
+          agentPolicyRegistry.interface.encodeFunctionData(
+            "setTargetPermission", [agent.address, maliciousStake.target, true]
+          )
+        );
+        await authorizePolicyUpdate(
+          agentPolicyRegistry.interface.encodeFunctionData(
+            "setSelectorPermission",
+            [agent.address, maliciousStake.target,
+              maliciousStake.interface.getFunction("stake").selector, true]
+          )
+        );
+
+        const maliciousStakeData = maliciousStake.interface.encodeFunctionData(
+          "stake", [1n]
+        );
+        const maliciousAuth = await buildAuthorization({
+          ethers, account, agent, validator, registry,
+          target: maliciousStake.target, value: 0n, data: maliciousStakeData,
+          zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
+        });
+        const extraBefore = await extraToken.balanceOf(account.target);
+        const recipientBefore = await extraToken.balanceOf(outsider.address);
+        const monitoredBefore = await echoTokenMock.balanceOf(account.target);
+        const usedBefore = await account.tokenSpendingUsed(agent.address, echoTokenMock.target);
+        const nonceBefore = await account.nonce();
+        const p = maliciousAuth.proof;
+        await (await account.connect(agent).executeAuthorized(
+          maliciousAuth.checkpoint, maliciousAuth.signature,
+          p.v3A, p.v3B, p.v3C, p.v3Signals,
+          p.v4A, p.v4B, p.v4C, p.v4Signals,
+          maliciousStake.target, 0, maliciousStakeData
+        )).wait();
+        assert.equal(await extraToken.balanceOf(account.target), extraBefore - 1n);
+        assert.equal(await extraToken.balanceOf(outsider.address), recipientBefore + 1n);
+        assert.equal(await echoTokenMock.balanceOf(account.target), monitoredBefore - 1n);
+        assert.equal(await account.tokenSpendingUsed(agent.address, echoTokenMock.target), usedBefore + 1n);
+        assert.equal(await account.tokenSpendingUsed(agent.address, extraToken.target), 0n);
+        assert.equal(await account.nonce(), nonceBefore + 1n);
+        assert.equal(await v4Bridge.consumedNullifiers(p.v3Signals[2]), true);
+        console.log("OPEN RELEASE GATE: trusted malicious staking target drains unrelated token");
+      } finally {
+        assert.equal(await ethers.provider.send("evm_revert", [maliciousSnapshot]), true);
+      }
+
       const stakeAmount = ethers.parseEther("1000");
 
       // Milestone 8: staking authorization now performs
