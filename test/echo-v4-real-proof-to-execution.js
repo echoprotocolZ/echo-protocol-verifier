@@ -44,7 +44,7 @@ describe("Echo real proof-to-account execution",function(){
    value:"0",calldataHashLow:(dataHash&((1n<<128n)-1n)).toString(),
    calldataHashHigh:(dataHash>>128n).toString(),chainId:network.chainId.toString(),
    nonce:"0",deadline:(now+3600n).toString(),checkpointX:"100050",checkpointY:"200000",
-   checkpointTimestamp:now.toString(),targetX:"100050",targetY:"200000",
+   checkpointTimestamp:now.toString(),expectedCheckpointTimestamp:now.toString(),targetX:"100050",targetY:"200000",
    minTimestamp:now.toString(),maxTimestamp:now.toString()
   });
   input.expectedFragmentCommitment=hash(input.fragmentPayload,input.fragmentSalt);
