@@ -2,7 +2,26 @@
 
 Status: **OPEN — NOT PRODUCTION-READY**.
 
-## Verified by automated tests
+## November 2026 remediation checkpoint — 267 passing (user-reported)
+
+**Status: OPEN / mainnet blocked.** The earlier exploit descriptions above are historical reproductions, not a claim that the current restricted execution policy still admits generic indirect calls. The current branch enforces an Option A allowlist in `EchoSmartAccountZ._validateExecutionPolicy`: only direct `transfer(address,uint256)` on the delegatee's monitored token or `stake(uint256)` on a registered and approved staking target; arbitrary indirect spenders are rejected. The staking helper independently checks the trusted target and factory-approved runtime codehash, monitored token identity, exact monitored balance decrease, and zero final allowance.
+
+**Real-proof regressions:** the malicious staking fixture attempting to pull an unrelated legacy-approved ERC-20 is rejected at registration. Revoking a previously approved staking codehash blocks execution and preserves nonce/nullifier. The two-step factory staking-code approval authority handoff rejects unauthorized acceptance and stale-authority approvals. User reports 267 passing, 0 failing, 54 seconds after the latest staking helper hardening commit `4f0f65d`.
+
+### Remaining release blockers — do not interpret codehash approval as an audit
+
+1. **Approval governance:** the factory's `stakingCodeAuthority` can approve arbitrary runtime codehashes; a compromised or mistaken authority can approve a malicious implementation. Two-step transfer protects handoff, not the approval decision. Move the authority to a properly configured multisig with documented signer threshold, monitoring, and emergency revocation process. No on-chain Safe ownership migration has been performed here.
+2. **Runtime codehash is not target identity:** different deployments of the same runtime bytecode may have different constructor-initialized storage and token bindings. A proxy's codehash identifies its proxy bytecode, not its mutable implementation. Require explicit reviewed target addresses and constructor/state invariants, or reject proxies and mutable implementations; inspect the actual staking source and deployment bytecode.
+3. **Legacy allowances for unrelated assets:** the smart account cannot enumerate or revoke all ERC-20 allowances across arbitrary tokens. Its safety currently depends on the strict call allowlist **and** the integrity of approved staking code. A compromised approved staking implementation may pull unrelated assets through existing allowances without affecting monitored-token balance accounting.
+4. **Token behavior:** nonstandard, callback-capable, upgradeable or malicious ERC-20 contracts can violate assumptions behind `balanceOf`, `approve`, and `transferFrom`. Audit token and staking implementations together.
+5. **Additional tests and review:** verify duplicate-codehash/different-constructor-state deployments, proxy upgrade behavior, emergency revocation under in-flight proof, reentrancy, nonstandard ERC-20 return behavior, and the complete administrative call graph. Run static analysis and obtain an independent smart-contract audit before production.
+6. **Documentation cleanup:** historical test findings in this document refer to the vulnerable pre-Option-A branch. Preserve them as regression history; do not label the current branch exploitable solely on those historical results.
+
+**Closure criterion:** documented production staking target identity and code review, multisig-controlled approval with emergency procedure, adversarial end-to-end coverage for the remaining paths, full suite passing, and independent audit findings addressed. Until then, Issue #3 remains open and deployment is blocked.
+
+---
+
+## Historical findings and automated tests (pre-remediation)
 
 - Direct ERC-20 `approve`, `transferFrom`, and unmonitored `transfer` selectors are rejected by Z's execution-policy hook.
 - A local-only harness calls the production balance-accounting hooks around an indirect token pull.
