@@ -23,16 +23,21 @@ async function main() {
       bootstrap.authorizationBridge.toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
     throw new Error("Bootstrapped account record invalid");
   const accountAddress = hre.ethers.getAddress(bootstrap.address);
+  console.log("RPC endpoint:", process.env.AMOY_RPC_URL ? "AMOY_RPC_URL (custom)" : "default dRPC");
+  console.log("STEP: reading account bridge");
   const account = await hre.ethers.getContractAt("EchoSmartAccountV4Bootstrapped", accountAddress);
   if ((await retry("account authorizationBridge", () => account.authorizationBridge())).toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
     throw new Error("New account bridge mismatch");
+  console.log("STEP: reading account nonce");
   const accountNonce = await retry("account nonce", () => account.nonce());
-  const [signer] = await hre.ethers.getSigners();
+  console.log("STEP: loading signer");
+  const [signer] = await retry("getSigners", () => hre.ethers.getSigners());
 
   const expected =
     "0xbD2dEf17C60C3f6C2dA6eE812F948f4B53f2f803";
 
-  const network = await hre.ethers.provider.getNetwork();
+  console.log("STEP: checking network");
+  const network = await retry("getNetwork", () => hre.ethers.provider.getNetwork());
 
   if (network.chainId !== 80002n) {
     throw new Error("Polygon Amoy required");
@@ -82,6 +87,7 @@ async function main() {
     signer
   );
 
+  console.log("STEP: reading checkpoint digest");
   const digest = await retry("checkpoint digest", () => registry.checkpointDigest(checkpoint));
 
   // Sign the exact digest expected by the deployed registry.
