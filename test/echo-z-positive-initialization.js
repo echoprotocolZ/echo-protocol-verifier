@@ -2402,51 +2402,23 @@ describe("Echo Protocol Z positive initialization", function () {
           };
         }
 
+        // Option A rejects all generic external spender calls, even when
+        // they are allowlisted and their underlying token is monitored.
         const monitoredBefore = await readPullState(echoTokenMock);
-        assert.equal(monitoredBefore.allowance, monitoredAllowance);
-        assert.ok(monitoredBefore.balance >= monitoredAllowance);
-        const firstAmount = budgetAmount - monitoredBefore.used;
-        assert.ok(firstAmount > 0n);
-
-        const inBudgetPull = await provePull(echoTokenMock, firstAmount);
-        await inBudgetPull.execute();
-        const budgetExhausted = await readPullState(echoTokenMock);
-        assert.deepEqual(budgetExhausted, {
-          nonce: monitoredBefore.nonce + 1n,
-          balance: monitoredBefore.balance - firstAmount,
-          received: monitoredBefore.received + firstAmount,
-          allowance: monitoredBefore.allowance - firstAmount,
-          used: budgetAmount
-        });
-        assert.equal(await v4Bridge.consumedNullifiers(inBudgetPull.nullifier), true);
-
-        const overBudgetPull = await provePull(echoTokenMock, 1n);
-        await assert.rejects(overBudgetPull.execute, /SpendingBudgetExceeded/);
-        assert.deepEqual(await readPullState(echoTokenMock), budgetExhausted);
-        assert.equal(await v4Bridge.consumedNullifiers(overBudgetPull.nullifier), false);
-        console.log("PASS: Real dual-proof legacy monitored allowance respects cumulative budget");
+        const monitoredPull = await provePull(echoTokenMock, 1n);
+        await assert.rejects(monitoredPull.execute, /Unauthorized/);
+        assert.deepEqual(await readPullState(echoTokenMock), monitoredBefore);
+        assert.equal(await v4Bridge.consumedNullifiers(monitoredPull.nullifier), false);
 
         const unmonitoredBefore = await readPullState(unmonitoredToken);
         assert.equal(await account.monitoredToken(agent.address), echoTokenMock.target);
         assert.equal(unmonitoredBefore.allowance, 1n);
         const unmonitoredPull = await provePull(unmonitoredToken, 1n);
-
-        // Characterize the open release gate. This should become a rejection
-        // assertion once the supported-asset policy is enforced.
-        await unmonitoredPull.execute();
-        assert.deepEqual(await readPullState(unmonitoredToken), {
-          nonce: unmonitoredBefore.nonce + 1n,
-          balance: unmonitoredBefore.balance - 1n,
-          received: unmonitoredBefore.received + 1n,
-          allowance: 0n,
-          used: unmonitoredBefore.used
-        });
-        assert.equal(await v4Bridge.consumedNullifiers(unmonitoredPull.nullifier), true);
-        assert.deepEqual(await readPullState(echoTokenMock), {
-          ...budgetExhausted,
-          nonce: budgetExhausted.nonce + 1n
-        });
-        console.log("OPEN RELEASE GATE: Real dual-proof legacy allowance bypasses unmonitored token accounting");
+        await assert.rejects(unmonitoredPull.execute, /Unauthorized/);
+        assert.deepEqual(await readPullState(unmonitoredToken), unmonitoredBefore);
+        assert.deepEqual(await readPullState(echoTokenMock), monitoredBefore);
+        assert.equal(await v4Bridge.consumedNullifiers(unmonitoredPull.nullifier), false);
+        console.log("PASS: Real dual-proof legacy allowances cannot fund generic indirect calls");
       } finally {
         assert.equal(await ethers.provider.send("evm_revert", [snapshot]), true);
       }
