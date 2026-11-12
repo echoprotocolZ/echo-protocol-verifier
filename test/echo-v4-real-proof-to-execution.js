@@ -1,0 +1,99 @@
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const snarkjs=require("snarkjs");
+const {buildPoseidon}=require("circomlibjs");
+const {ethers}=require("hardhat");
+
+// Genuine V3 + V4 proofs and production bridge/account/registry contracts.
+// Hardhat impersonation is ONLY used to initialize account-scoped policies:
+// production smart-account policy administration is intentionally disabled.
+describe("Echo real proof-to-account execution",function(){
+ this.timeout(180000);
+ it("executes a validator-signed dual-proof authorization once and rejects replay",async function(){
+  async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
+  const [owner,validator,target]=await ethers.getSigners();
+  const registry=await deploy("EchoAttestationRegistryV3");
+  const v3verifier=await deploy("EchoAuthorizationVerifierV3");
+  const v3bridge=await deploy("EchoAuthorizationBridgeV3",v3verifier.target,registry.target);
+  const policy=await deploy("EchoGeographicPolicyRegistryV4");
+  const v4verifier=await deploy("EchoGeographicBoundVerifierV4");
+  const gateway=await deploy("EchoGeographicProofGatewayV4",v4verifier.target,policy.target);
+  const dual=await deploy("EchoDualProofVerifierV4",v3bridge.target,gateway.target);
+  const bridge=await deploy("EchoAuthorizationBridgeV4",dual.target,registry.target);
+  const account=await deploy("EchoSmartAccountV4",owner.address,ethers.ZeroAddress,bridge.target);
+  const accountSigner=await ethers.getImpersonatedSigner(account.target);
+  await ethers.provider.send("hardhat_setBalance",[account.target,ethers.toBeHex(ethers.parseEther("1"))]);
+  const zone=[100050n,100050n,200000n,200000n];
+  await(await policy.connect(accountSigner).setGeographicPolicy(account.target,zone)).wait();
+  const zoneHash=(await policy.getGeographicPolicy(account.target,account.target)).zoneHash;
+  await(await registry.connect(accountSigner).setCheckpointBridge(bridge.target,true)).wait();
+  await(await registry.connect(accountSigner).setValidatorSigner(validator.address,true)).wait();
+  await(await registry.connect(accountSigner).setAttestationPolicy(account.target,{
+   allowedZoneHash:zoneHash,maxTimeDrift:3600n,requiredTier:0,allowValidatorFallback:false,enabled:true
+  })).wait();
+  const base="build/v3-timestamp-fixed";
+  const input=JSON.parse(fs.readFileSync(base+"/input-local.json","utf8"));
+  const poseidon=await buildPoseidon();
+  const hash=(...args)=>poseidon.F.toString(poseidon(args.map(BigInt)));
+  const now=BigInt((await ethers.provider.getBlock("latest")).timestamp);
+  const network=await ethers.provider.getNetwork();
+  const callData="0x",dataHash=BigInt(ethers.keccak256(callData));
+  Object.assign(input,{
+   account:BigInt(account.target).toString(),delegatee:BigInt(account.target).toString(),
+   validator:BigInt(validator.address).toString(),target:BigInt(target.address).toString(),
+   value:"0",calldataHashLow:(dataHash&((1n<<128n)-1n)).toString(),
+   calldataHashHigh:(dataHash>>128n).toString(),chainId:network.chainId.toString(),
+   nonce:"0",deadline:(now+3600n).toString(),checkpointX:"100050",checkpointY:"200000",
+   checkpointTimestamp:now.toString(),targetX:"100050",targetY:"200000",
+   minTimestamp:now.toString(),maxTimestamp:now.toString()
+  });
+  input.expectedFragmentCommitment=hash(input.fragmentPayload,input.fragmentSalt);
+  input.expectedCheckpointCommitment=hash(input.checkpointX,input.checkpointY,input.checkpointTimestamp);
+  const auth1=hash(input.account,input.delegatee,input.validator,input.target,input.value,
+   input.calldataHashLow,input.calldataHashHigh,input.chainId,input.nonce,input.deadline,
+   input.expectedFragmentCommitment,input.targetX,input.targetY,input.maxDistanceSq,
+   input.minTimestamp,input.maxTimestamp);
+  input.expectedAuthorizationCommitment=hash(auth1,input.expectedCheckpointCommitment);
+  input.expectedNullifier=hash(input.account,input.expectedAuthorizationCommitment);
+  const v3=await snarkjs.groth16.fullProve(input,
+   base+"/EchoAuthorizationVerifierV3_js/EchoAuthorizationVerifierV3.wasm",
+   base+"/EchoAuthorizationVerifierV3_final.zkey");
+  assert.equal(await snarkjs.groth16.verify(
+   await snarkjs.zKey.exportVerificationKey(base+"/EchoAuthorizationVerifierV3_final.zkey"),
+   v3.publicSignals,v3.proof),true);
+  const v4base="build/v4-geographic-bound";
+  const v4=await snarkjs.groth16.fullProve({
+   checkpointLat:input.checkpointX,checkpointLon:input.checkpointY,
+   checkpointTimestamp:input.checkpointTimestamp,minLat:"100050",maxLat:"100050",
+   minLon:"200000",maxLon:"200000",
+   expectedCheckpointCommitment:input.expectedCheckpointCommitment
+  },v4base+"/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm",
+   v4base+"/setup/EchoGeographicBoundV4_final.zkey");
+  assert.equal(await snarkjs.groth16.verify(
+   await snarkjs.zKey.exportVerificationKey(v4base+"/setup/EchoGeographicBoundV4_final.zkey"),
+   v4.publicSignals,v4.proof),true);
+  const v3args=JSON.parse("["+await snarkjs.groth16.exportSolidityCallData(v3.proof,v3.publicSignals)+"]");
+  const v4args=JSON.parse("["+await snarkjs.groth16.exportSolidityCallData(v4.proof,v4.publicSignals)+"]");
+  const cp={account:account.target,delegatee:account.target,zoneHash,
+   checkpointCommitment:ethers.toBeHex(BigInt(input.expectedCheckpointCommitment),32),
+   authorizationCommitment:ethers.toBeHex(BigInt(input.expectedAuthorizationCommitment),32),
+   timestamp:now,nonce:0n};
+  const domain={name:"EchoAttestationRegistryV3",version:"1",
+   chainId:network.chainId,verifyingContract:registry.target};
+  const types={SignedCheckpoint:[
+   {name:"account",type:"address"},{name:"delegatee",type:"address"},
+   {name:"zoneHash",type:"bytes32"},{name:"checkpointCommitment",type:"bytes32"},
+   {name:"authorizationCommitment",type:"bytes32"},{name:"timestamp",type:"uint64"},
+   {name:"nonce",type:"uint256"}]};
+  const signature=await validator.signTypedData(domain,types,cp);
+  assert.equal(await dual.verifyDualProof(cp,...v3args,...v4args),true);
+  const execute=()=>account.connect(owner).executeAuthorized(cp,signature,
+   ...v3args,...v4args,target.address,0n,callData);
+  await(await execute()).wait();
+  assert.equal(await account.nonce(),1n);
+  assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),true);
+  assert.equal(await registry.consumedCheckpoints(await registry.checkpointDigest(cp)),true);
+  await assert.rejects(execute,"Replay must revert");
+  assert.equal(await account.nonce(),1n);
+ });
+});
