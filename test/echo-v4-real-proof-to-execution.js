@@ -9,11 +9,13 @@ const {ethers}=require("hardhat");
 // production smart-account policy administration is intentionally disabled.
 describe("Echo real proof-to-account execution",function(){
  this.timeout(180000);
- it("executes a validator-signed dual-proof authorization once and rejects replay",async function(){
+ for(const shouldRevert of [false,true]) it(shouldRevert ? "rolls back checkpoint, nullifier and nonce when target reverts" : "executes a validator-signed dual-proof authorization once and rejects replay",async function(){
   async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
   const [owner,validator,target]=await ethers.getSigners();
   const registry=await deploy("EchoAttestationRegistryV3");
   const v3verifier=await deploy("EchoAuthorizationVerifierV3");
+  // Empty calldata to the real V3 verifier reverts: it has no fallback.
+  const destination=shouldRevert ? v3verifier.target : target.address;
   const v3bridge=await deploy("EchoAuthorizationBridgeV3",v3verifier.target,registry.target);
   const policy=await deploy("EchoGeographicPolicyRegistryV4");
   const v4verifier=await deploy("EchoGeographicBoundVerifierV4");
@@ -40,7 +42,7 @@ describe("Echo real proof-to-account execution",function(){
   const callData="0x",dataHash=BigInt(ethers.keccak256(callData));
   Object.assign(input,{
    account:BigInt(account.target).toString(),delegatee:BigInt(account.target).toString(),
-   validator:BigInt(validator.address).toString(),target:BigInt(target.address).toString(),
+   validator:BigInt(validator.address).toString(),target:BigInt(destination).toString(),
    value:"0",calldataHashLow:(dataHash&((1n<<128n)-1n)).toString(),
    calldataHashHigh:(dataHash>>128n).toString(),chainId:network.chainId.toString(),
    nonce:"0",deadline:(now+3600n).toString(),checkpointX:"100050",checkpointY:"200000",
@@ -88,12 +90,20 @@ describe("Echo real proof-to-account execution",function(){
   const signature=await validator.signTypedData(domain,types,cp);
   assert.equal(await dual.verifyDualProof(cp,...v3args,...v4args),true);
   const execute=()=>account.connect(owner).executeAuthorized(cp,signature,
-   ...v3args,...v4args,target.address,0n,callData);
-  await(await execute()).wait();
-  assert.equal(await account.nonce(),1n);
-  assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),true);
-  assert.equal(await registry.consumedCheckpoints(await registry.checkpointDigest(cp)),true);
-  await assert.rejects(execute,"Replay must revert");
-  assert.equal(await account.nonce(),1n);
+   ...v3args,...v4args,destination,0n,callData);
+  if(shouldRevert){
+   await assert.rejects(async()=>{const tx=await execute();await tx.wait();},"Reverting target must reject execution");
+   assert.equal(await account.nonce(),0n,"Account nonce must roll back");
+   assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),false,"Nullifier must roll back");
+   assert.equal(await registry.consumedCheckpoints(await registry.checkpointDigest(cp)),false,"Checkpoint must roll back");
+   assert.equal(await registry.consumedCheckpointNonces(account.target,account.target,0n),false,"Registry nonce must roll back");
+  }else{
+   await(await execute()).wait();
+   assert.equal(await account.nonce(),1n);
+   assert.equal(await bridge.consumedNullifiers(BigInt(input.expectedNullifier)),true);
+   assert.equal(await registry.consumedCheckpoints(await registry.checkpointDigest(cp)),true);
+   await assert.rejects(execute,"Replay must revert");
+   assert.equal(await account.nonce(),1n);
+  }
  });
 });
