@@ -431,6 +431,24 @@ describe("Echo Protocol Z positive initialization", function () {
       )).wait();
       assert.equal(await factory.approvedStakingCodehash(ethers.id("reviewed-fixture")), true);
       console.log("PASS: two-step staking approval authority handoff");
+      // Pending Safe/multisig handoffs can be cancelled by the current
+      // authority; the cancelled nominee cannot accept later.
+      await (await factory.connect(validator).transferStakingCodeAuthority(outsider.address)).wait();
+      assert.equal(await factory.pendingStakingCodeAuthority(), outsider.address);
+      await assert.rejects(async () => {
+        await factory.connect(owner).cancelStakingCodeAuthorityTransfer();
+      });
+      await (await factory.connect(validator).cancelStakingCodeAuthorityTransfer()).wait();
+      assert.equal(await factory.pendingStakingCodeAuthority(), ethers.ZeroAddress);
+      assert.equal(await factory.stakingCodeAuthority(), validator.address);
+      await assert.rejects(async () => {
+        await factory.connect(outsider).acceptStakingCodeAuthority();
+      });
+      await assert.rejects(async () => {
+        await factory.connect(validator).cancelStakingCodeAuthorityTransfer();
+      });
+      console.log("PASS: pending authority transfer cancelled; nominee cannot accept");
+
     } finally {
       assert.equal(await ethers.provider.send("evm_revert", [authoritySnapshot]), true);
     }
