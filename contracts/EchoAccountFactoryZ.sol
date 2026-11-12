@@ -57,9 +57,45 @@ contract EchoAccountFactoryZ is EIP712 {
         emit StakingCodehashApproval(codehash, approved);
     }
 
+    // Explicit address binding prevents a second deployment with identical
+    // runtime code but different constructor-initialized storage from
+    // inheriting approval.
+    mapping(address => bytes32) public approvedStakingTargetCodehash;
+    mapping(address => address) public approvedStakingTargetToken;
+    event StakingTargetApproval(address indexed target, address indexed token, bytes32 codehash, bool approved);
+
+    function setStakingTargetApproval(
+        address target,
+        address token,
+        bool approved
+    ) external {
+        if (msg.sender != stakingCodeAuthority || target == address(0))
+            revert InvalidConfiguration();
+        if (!approved) {
+            delete approvedStakingTargetCodehash[target];
+            delete approvedStakingTargetToken[target];
+            emit StakingTargetApproval(target, address(0), bytes32(0), false);
+            return;
+        }
+        if (target.code.length == 0 || token.code.length == 0 ||
+            !approvedStakingCodehash[target.codehash])
+            revert InvalidConfiguration();
+        (bool ok, bytes memory response) = target.staticcall(
+            abi.encodeWithSignature("echoToken()")
+        );
+        if (!ok || response.length != 32 ||
+            abi.decode(response, (address)) != token)
+            revert InvalidConfiguration();
+        approvedStakingTargetCodehash[target] = target.codehash;
+        approvedStakingTargetToken[target] = token;
+        emit StakingTargetApproval(target, token, target.codehash, true);
+    }
+
     function isApprovedStakingTarget(address target) external view returns (bool) {
         return target.code.length != 0 &&
-            approvedStakingCodehash[target.codehash];
+            approvedStakingCodehash[target.codehash] &&
+            approvedStakingTargetCodehash[target] == target.codehash &&
+            approvedStakingTargetToken[target] != address(0);
     }
 
     constructor() EIP712("EchoAccountFactoryZ", "1") {
