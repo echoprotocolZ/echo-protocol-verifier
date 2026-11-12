@@ -173,7 +173,9 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         bytes calldata data
     ) internal returns (bytes memory) {
         address token = monitoredToken[delegatee];
-        if (token == address(0) || staking.code.length == 0)
+        if (token == address(0) || staking.code.length == 0 ||
+            staking != trustedStakingTarget[delegatee] ||
+            !IEchoReviewedStakingFactory(deploymentFactory).isApprovedStakingTarget(staking))
             revert Unauthorized();
 
         if (data.length != 36 ||
