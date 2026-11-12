@@ -23,19 +23,28 @@ function getJson(url) {
   });
 }
 function parseSource(raw) {
-  const trimmed=raw.trim();
+  const trimmed = raw.trim();
   if (!trimmed.startsWith("{")) return {kind:"single-file",files:{"EchoStaking.sol":raw},settings:null};
+  // Etherscan V2 sometimes returns Standard JSON with an extra outer brace pair.
+  const candidates = [trimmed];
+  if (trimmed.startsWith("{{") && trimmed.endsWith("}}")) candidates.push(trimmed.slice(1,-1));
   let obj;
-  try { obj=JSON.parse(trimmed); } catch { throw Error("Verified source JSON is invalid"); }
-  // Etherscan wraps standard-json source in an extra pair of braces.
-  if (!obj.sources && trimmed.startsWith("{{") && trimmed.endsWith("}}")) obj=JSON.parse(trimmed.slice(1,-1));
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") { obj = parsed; break; }
+    } catch (_) { /* try alternate wrapper */ }
+  }
+  if (!obj) throw Error("Verified source JSON is invalid after checking standard and Etherscan-wrapped formats");
   if (!obj.sources) return {kind:"unrecognized-json",files:{"verified-source.json":raw},settings:null};
   const files={};
   for(const [name,source] of Object.entries(obj.sources)){
     if(typeof source.content==="string") files[name]=source.content;
   }
+  if (Object.keys(files).length === 0) throw Error("Verified Standard JSON contains no source file contents");
   return {kind:"standard-json",files,settings:obj.settings||null};
 }
+
 async function main() {
   const key=process.env.ETHERSCAN_API_KEY;
   if(!key || key==="YOUR_API_KEY") throw Error("Set ETHERSCAN_API_KEY to an Etherscan API V2 key (do not paste the key in chat)");
