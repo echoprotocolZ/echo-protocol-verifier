@@ -4,6 +4,17 @@ const { loadRecords } = require("./amoy-deployment-records");
 
 async function main() {
   const r = loadRecords().contracts;
+  const bootstrapPath = "deployments/amoy/echo-v4-bootstrapped-account.json";
+  if (!fs.existsSync(bootstrapPath)) throw new Error("Missing bootstrapped account deployment record");
+  const bootstrap = JSON.parse(fs.readFileSync(bootstrapPath, "utf8"));
+  if (bootstrap.chainId !== 80002 || !hre.ethers.isAddress(bootstrap.address) ||
+      bootstrap.authorizationBridge.toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
+    throw new Error("Bootstrapped account record invalid");
+  const accountAddress = hre.ethers.getAddress(bootstrap.address);
+  const account = await hre.ethers.getContractAt("EchoSmartAccountV4Bootstrapped", accountAddress);
+  if ((await account.authorizationBridge()).toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
+    throw new Error("New account bridge mismatch");
+  const accountNonce = await account.nonce();
   const [signer] = await hre.ethers.getSigners();
 
   const expected =
@@ -36,7 +47,7 @@ async function main() {
   );
 
   const checkpoint = {
-    account: r.EchoSmartAccountV4,
+    account: accountAddress,
     delegatee: expected,
     zoneHash:
       "0x779dbc9b263b67e52c604312d097e324ce4c75c90cfa2185d4be0ce5b31fcb76",
@@ -50,6 +61,7 @@ async function main() {
     nonce: BigInt(input.nonce)
   };
 
+  if (BigInt(checkpoint.nonce) !== accountNonce || BigInt(signals[11]) !== accountNonce) throw new Error("Proof/checkpoint nonce mismatch");
   const registry = new hre.ethers.Contract(
     r.EchoAttestationRegistryV3,
     [
@@ -100,6 +112,7 @@ async function main() {
     throw new Error("Checkpoint signature verification failed");
   }
 
+  console.log("Checkpoint account:", accountAddress);
   fs.writeFileSync(
     `${dir}/v4-signed-checkpoint.json`,
     JSON.stringify({
