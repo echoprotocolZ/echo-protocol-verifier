@@ -2646,6 +2646,32 @@ describe("Echo Protocol Z positive initialization", function () {
           await factory.connect(outsider).setStakingCodehashApproval(reviewedHash, true);
         });
         console.log("PASS: revoked staking code rejected; nonce and nullifier preserved");
+        // Independently revoke the address while leaving its bytecode hash
+        // approved. The same genuine proof must remain unusable.
+        await (await factory.setStakingCodehashApproval(reviewedHash, true)).wait();
+        assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), true);
+        await (await factory.setStakingTargetApproval(
+          echoStakingMock.target, echoTokenMock.target, false
+        )).wait();
+        assert.equal(await factory.approvedStakingCodehash(reviewedHash), true);
+        assert.equal(await factory.isApprovedStakingTarget(echoStakingMock.target), false);
+        await assert.rejects(async () => {
+          await (await account.connect(agent).executeAuthorized(
+            stakeAuth.checkpoint, stakeAuth.signature,
+            rp.v3A, rp.v3B, rp.v3C, rp.v3Signals,
+            rp.v4A, rp.v4B, rp.v4C, rp.v4Signals,
+            echoStakingMock.target, 0, stakeData
+          )).wait();
+        });
+        assert.equal(await account.nonce(), nonceBeforeRevocation);
+        assert.equal(await echoTokenMock.balanceOf(account.target), tokenBeforeRevocation);
+        assert.equal(await echoStakingMock.getValidatorStake(account.target), stakeBeforeRevocation);
+        assert.equal(await echoTokenMock.allowance(
+          account.target, echoStakingMock.target
+        ), allowanceBeforeRevocation);
+        assert.equal(await v4Bridge.consumedNullifiers(rp.v3Signals[2]), false);
+        console.log("PASS: revoked staking address blocks genuine proof without consuming nullifier");
+
       } finally {
         assert.equal(await ethers.provider.send("evm_revert", [revocationSnapshot]), true);
       }
