@@ -2292,6 +2292,60 @@ describe("Echo Protocol Z positive initialization", function () {
       console.log("PASS: Real V3/V4 proof rejected for unapproved indirect spender");
       // This does not cover an approved spender with a pre-existing allowance.
 
+      // Genuine V3/V4 authorization with an explicitly allowlisted
+      // indirect spender. Without an existing ERC-20 allowance, the
+      // spender must revert and the proof/nullifier must roll back.
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setTargetPermission",
+          [agent.address, indirectSpender.target, true]
+        )
+      );
+      await authorizePolicyUpdate(
+        agentPolicyRegistry.interface.encodeFunctionData(
+          "setSelectorPermission",
+          [agent.address, indirectSpender.target, indirectData.slice(0, 10), true]
+        )
+      );
+      assert.equal(
+        await echoTokenMock.allowance(account.target, indirectSpender.target),
+        0n
+      );
+      const approvedIndirectAuth = await buildAuthorization({
+        ethers, account, agent, validator, registry,
+        target: indirectSpender.target, value: 0n, data: indirectData,
+        zone: stakingZone, zoneHash: activeZoneHash, deadline: stakingDeadline
+      });
+      const approvedIndirectNonce = await account.nonce();
+      const approvedIndirectBalance = await echoTokenMock.balanceOf(account.target);
+      const approvedRecipientBalance = await echoTokenMock.balanceOf(outsider.address);
+      const approvedIndirectUsed = await account.tokenSpendingUsed(
+        agent.address, echoTokenMock.target
+      );
+      await assert.rejects(async () => {
+        const p = approvedIndirectAuth.proof;
+        const tx = await account.connect(agent).executeAuthorized(
+          approvedIndirectAuth.checkpoint, approvedIndirectAuth.signature,
+          p.v3A, p.v3B, p.v3C, p.v3Signals,
+          p.v4A, p.v4B, p.v4C, p.v4Signals,
+          indirectSpender.target, 0, indirectData
+        );
+        await tx.wait();
+      });
+      assert.equal(await account.nonce(), approvedIndirectNonce);
+      assert.equal(await echoTokenMock.balanceOf(account.target), approvedIndirectBalance);
+      assert.equal(await echoTokenMock.balanceOf(outsider.address), approvedRecipientBalance);
+      assert.equal(
+        await account.tokenSpendingUsed(agent.address, echoTokenMock.target),
+        approvedIndirectUsed
+      );
+      assert.equal(
+        await v4Bridge.consumedNullifiers(approvedIndirectAuth.proof.v3Signals[2]),
+        false
+      );
+      console.log("PASS: Real dual-proof approved indirect pull without allowance reverts");
+      // Not a proof of safety when a pre-existing allowance is present.
+
       const stakeAmount = ethers.parseEther("1000");
 
       // Milestone 8: staking authorization now performs
