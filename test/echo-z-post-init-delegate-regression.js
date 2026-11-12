@@ -101,6 +101,38 @@ describe("Echo Protocol Z post-initialization delegate regression", function () 
     assert.equal(await account.nonce(), nonceBefore);
   });
 
+  it("prevents outsiders from granting account-scoped indirect spender permissions", async function () {
+    const { owner, agent, outsider, account, agentPolicies } = await fixture();
+    const spender = await deploy("EchoIndirectTokenSpenderTestMock");
+    const accountAddress = await account.getAddress();
+    const selector = spender.interface.getFunction("pull").selector;
+    const nonceBefore = await account.nonce();
+
+    await (await agentPolicies.connect(outsider).setAgentPolicy(
+      agent.address, 0n,
+      BigInt((await ethers.provider.getBlock("latest")).timestamp) + 3600n,
+      true
+    )).wait();
+    await (await agentPolicies.connect(outsider).setTargetPermission(
+      agent.address, spender.target, true
+    )).wait();
+    await (await agentPolicies.connect(outsider).setSelectorPermission(
+      agent.address, spender.target, selector, true
+    )).wait();
+
+    assert.equal(await agentPolicies.approvedTargets(outsider.address, agent.address, spender.target), true);
+    assert.equal(await agentPolicies.approvedTargets(accountAddress, agent.address, spender.target), false);
+    assert.equal(await agentPolicies.approvedSelectors(accountAddress, agent.address, spender.target, selector), false);
+
+    const calldata = spender.interface.encodeFunctionData("pull", [
+      owner.address, accountAddress, outsider.address, 1n
+    ]);
+    await assert.rejects(
+      agentPolicies.validateExecution(accountAddress, agent.address, spender.target, 0n, calldata)
+    );
+    assert.equal(await account.nonce(), nonceBefore);
+  });
+
   it("rejects reinitialization that attempts to replace the delegate", async function () {
     const { owner, agent, replacement, bridge, account } = await fixture();
     const address = await account.getAddress();
