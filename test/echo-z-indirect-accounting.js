@@ -245,4 +245,50 @@ describe("ECHO Z indirect token accounting — isolated production hooks", funct
     assert.equal(await account.tokenSpendingBudgets(agent.address, token.target), 4n);
   });
 
+  it("documents approved indirect target plus unmonitored-token accounting boundary", async function () {
+    const [owner, agent, recipient] = await ethers.getSigners();
+    const deploy = async (name, ...args) => {
+      const contract = await (await ethers.getContractFactory(name)).deploy(...args);
+      await contract.waitForDeployment();
+      return contract;
+    };
+    const bridge = await deploy("EchoTokenTestMock");
+    const monitored = await deploy("EchoTokenTestMock");
+    const unmonitored = await deploy("EchoTokenTestMock");
+    const spender = await deploy("EchoIndirectTokenSpenderTestMock");
+    const account = await deploy(
+      "EchoZExecutionPolicyHarness", owner.address, bridge.target, owner.address
+    );
+    const policies = await deploy("EchoAgentPolicyRegistryZ");
+
+    await (await account.fixtureSetBudget(agent.address, monitored.target, 5n)).wait();
+    await (await unmonitored.transfer(account.target, 100n)).wait();
+    await (await account.fixtureApprove(unmonitored.target, spender.target, 10n)).wait();
+
+    const expiry = BigInt((await ethers.provider.getBlock("latest")).timestamp) + 3600n;
+    await (await policies.setAgentPolicy(agent.address, 0n, expiry, true)).wait();
+    await (await policies.setTargetPermission(agent.address, spender.target, true)).wait();
+    await (await policies.setSelectorPermission(
+      agent.address, spender.target, spender.interface.getFunction("pull").selector, true
+    )).wait();
+
+    const calldata = spender.interface.encodeFunctionData("pull", [
+      unmonitored.target, account.target, recipient.address, 10n
+    ]);
+    assert.equal(
+      await policies.validateExecution(owner.address, agent.address, spender.target, 0n, calldata),
+      true,
+      "An account-scoped allowlist can approve the indirect spender selector"
+    );
+
+    // Harness intentionally bypasses the bridge, real proofs and production
+    // policy binding. This is a boundary demonstration, not an exploit proof.
+    await (await account.simulateAuthorizedCall(agent.address, spender.target, calldata)).wait();
+    assert.equal(await unmonitored.balanceOf(account.target), 90n);
+    assert.equal(await unmonitored.balanceOf(recipient.address), 10n);
+    assert.equal(await account.tokenSpendingUsed(agent.address, monitored.target), 0n);
+    assert.equal(await account.tokenSpendingUsed(agent.address, unmonitored.target), 0n);
+    assert.equal(await account.monitoredToken(agent.address), monitored.target);
+  });
+
 });
