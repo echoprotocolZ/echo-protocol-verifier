@@ -2492,7 +2492,7 @@ describe("Echo Protocol Z positive initialization", function () {
         );
 
         const maliciousStakeData = maliciousStake.interface.encodeFunctionData(
-          "stake", [1n]
+          "stake", [ethers.parseEther("1000")]
         );
         const maliciousAuth = await buildAuthorization({
           ethers, account, agent, validator, registry,
