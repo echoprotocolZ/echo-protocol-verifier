@@ -9,7 +9,7 @@ const {ethers}=require("hardhat");
 // production smart-account policy administration is intentionally disabled.
 describe("Echo real proof-to-account execution",function(){
  this.timeout(180000);
- for(const mode of ["success","rollback","invalid-signature","untrusted-validator","unauthorized-caller","tampered-target"]) it(({success:"executes a validator-signed dual-proof authorization once and rejects replay",rollback:"rolls back checkpoint, nullifier and nonce when target reverts","invalid-signature":"rejects a forged validator signature with real proofs","untrusted-validator":"rejects an untrusted validator with real proofs","unauthorized-caller":"rejects an unauthorized caller with real proofs","tampered-target":"rejects transaction target tampering with real proofs"})[mode],async function(){
+ for(const mode of ["success","rollback","invalid-signature","untrusted-validator","unauthorized-caller","tampered-target","tampered-value","tampered-calldata","expired-authorization","revoked-geographic-policy","revoked-attestation-policy"]) it(({success:"executes a validator-signed dual-proof authorization once and rejects replay",rollback:"rolls back checkpoint, nullifier and nonce when target reverts","invalid-signature":"rejects a forged validator signature with real proofs","untrusted-validator":"rejects an untrusted validator with real proofs","unauthorized-caller":"rejects an unauthorized caller with real proofs","tampered-target":"rejects transaction target tampering with real proofs","tampered-value":"rejects ETH value tampering with real proofs","tampered-calldata":"rejects calldata tampering with real proofs","expired-authorization":"rejects expired authorization with real proofs","revoked-geographic-policy":"rejects revoked geographic policy with real proofs","revoked-attestation-policy":"rejects revoked attestation policy with real proofs"})[mode],async function(){
   const shouldRevert=mode==="rollback";
   async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
   const [owner,validator,target]=await ethers.getSigners();
@@ -90,12 +90,23 @@ describe("Echo real proof-to-account execution",function(){
    {name:"nonce",type:"uint256"}]};
   const signature=await validator.signTypedData(domain,types,cp);
   assert.equal(await dual.verifyDualProof(cp,...v3args,...v4args),true);
+  if(mode==="expired-authorization"){
+   // The circuit deadline is now+3600; advance the chain beyond it.
+   await ethers.provider.send("evm_setNextBlockTimestamp",[Number(now+3601n)]);
+   await ethers.provider.send("evm_mine",[]);
+  }
+  if(mode==="revoked-geographic-policy") await(await policy.connect(accountSigner).disableGeographicPolicy(account.target)).wait();
+  if(mode==="revoked-attestation-policy") await(await registry.connect(accountSigner).setAttestationPolicy(account.target,{
+   allowedZoneHash:zoneHash,maxTimeDrift:3600n,requiredTier:0,allowValidatorFallback:false,enabled:false
+  })).wait();
   const signatureToUse=mode==="invalid-signature" ? await target.signTypedData(domain,types,cp) : signature;
   if(mode==="untrusted-validator") await(await registry.connect(accountSigner).setValidatorSigner(validator.address,false)).wait();
   const caller=mode==="unauthorized-caller" ? target : owner;
   const executionTarget=mode==="tampered-target" ? validator.address : destination;
+  const executionValue=mode==="tampered-value" ? 1n : 0n;
+  const executionData=mode==="tampered-calldata" ? "0x12345678" : callData;
   const execute=()=>account.connect(caller).executeAuthorized(cp,signatureToUse,
-   ...v3args,...v4args,executionTarget,0n,callData);
+   ...v3args,...v4args,executionTarget,executionValue,executionData);
   if(!["success","rollback"].includes(mode)){
    await assert.rejects(async()=>{const tx=await execute();await tx.wait();},mode+" must reject");
    assert.equal(await account.nonce(),0n,"Rejected authorization cannot advance account nonce");
