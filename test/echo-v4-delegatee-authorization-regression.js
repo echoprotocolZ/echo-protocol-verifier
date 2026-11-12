@@ -1,5 +1,5 @@
 "use strict";
-const { expect } = require("chai");
+const assert = require("node:assert/strict");
 const { ethers } = require("hardhat");
 
 describe("Echo V4 delegatee authorization regression", function () {
@@ -21,8 +21,12 @@ describe("Echo V4 delegatee authorization regression", function () {
     const zeros2 = [0, 0], zerosB = [[0, 0], [0, 0]];
     const args = [checkpoint, "0x", zeros2, zerosB, zeros2, Array(20).fill(0),
       zeros2, zerosB, zeros2, Array(5).fill(0), delegatee.address, 0, "0x", 0];
-    expect(await bridge.authorizedDelegatees(account.address, delegatee.address)).to.equal(false);
-    await expect(bridge.connect(account).authorize(...args)).to.be.revertedWithCustomError(bridge, "UnauthorizedDelegatee");
+    assert.equal(await bridge.authorizedDelegatees(account.address, delegatee.address), false);
+    await assert.rejects(() => bridge.connect(account).authorize.staticCall(...args), (error) => {
+      const data = error.data || error.info?.error?.data;
+      assert.equal(String(data).slice(0, 10).toLowerCase(), bridge.interface.getError("UnauthorizedDelegatee").selector.toLowerCase());
+      return true;
+    });
     // An unrelated EOA cannot grant permissions for this account.
     await bridge.connect(delegatee).setAuthorizedDelegatee(delegatee.address, true);
     expect(await bridge.authorizedDelegatees(account.address, delegatee.address)).to.equal(false);
@@ -30,7 +34,11 @@ describe("Echo V4 delegatee authorization regression", function () {
     // The account itself may opt in. This test uses an EOA as the account
     // only to exercise bridge permission semantics, NOT a smart-account admin path.
     await bridge.connect(account).setAuthorizedDelegatee(delegatee.address, true);
-    expect(await bridge.authorizedDelegatees(account.address, delegatee.address)).to.equal(true);
-    await expect(bridge.connect(account).authorize(...args)).not.to.be.revertedWithCustomError(bridge, "UnauthorizedDelegatee");
+    assert.equal(await bridge.authorizedDelegatees(account.address, delegatee.address), true);
+    await assert.rejects(() => bridge.connect(account).authorize.staticCall(...args), (error) => {
+      const data = error.data || error.info?.error?.data;
+      assert.notEqual(String(data).slice(0, 10).toLowerCase(), bridge.interface.getError("UnauthorizedDelegatee").selector.toLowerCase());
+      return true;
+    });
   });
 });
