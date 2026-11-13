@@ -15,5 +15,10 @@
   },
   "scripts": {
     "security:v3": "python3 scripts/verify-v3-fresh-build.py && python3 scripts/verify-v3-public-signals.py && node scripts/test-v3-geographic-boundaries.js && node scripts/test-v3-geographic-circuit.js && hardhat test"
+  },
+  "overrides": {
+    "serialize-javascript": "7.1.4",
+    "tmp": "0.2.7",
+    "ws": "8.23.0"
   }
 }
