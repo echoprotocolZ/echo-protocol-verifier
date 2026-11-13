@@ -100,4 +100,72 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
         delegationLock = 0;
         return true;
     }
+    bytes32 public constant GEOGRAPHIC_ADMIN_DOMAIN =
+        keccak256("ECHO_PROTOCOL_Z_V4_GEOGRAPHIC_ADMIN_V1");
+
+    event ProofAuthorizedGeographicPolicy(
+        address indexed delegatee, bytes32 indexed zoneHash, bool enabled, uint256 nonce
+    );
+
+    function geographicPolicyIntent(
+        address delegatee, EchoGeographicZoneV4.Zone calldata zone, bool enabled
+    ) external view returns (bytes memory) {
+        return _geographicPolicyIntent(delegatee, zone, enabled);
+    }
+
+    function _geographicPolicyIntent(
+        address delegatee, EchoGeographicZoneV4.Zone memory zone, bool enabled
+    ) internal view returns (bytes memory) {
+        return abi.encode(
+            GEOGRAPHIC_ADMIN_DOMAIN, block.chainid, address(this),
+            delegatee, EchoGeographicZoneV4.hash(zone), enabled, nonce
+        );
+    }
+
+    /// @notice Proof-bound geographic policy administration; no owner-only bypass.
+    function authorizeGeographicPolicyWithProof(
+        IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
+        bytes calldata signature,
+        ProofBundle calldata proof,
+        address delegatee,
+        EchoGeographicZoneV4.Zone calldata zone,
+        bool enabled
+    ) external returns (bool) {
+        if (delegationLock != 0) revert DelegationReentrancy();
+        delegationLock = 1;
+        if (
+            msg.sender != owner ||
+            checkpoint.account != address(this) ||
+            checkpoint.delegatee != address(this) ||
+            delegatee == address(0) ||
+            delegatee == address(this)
+        ) revert InvalidDelegationIntent();
+
+        uint256 currentNonce = nonce;
+        bytes memory intent = _geographicPolicyIntent(delegatee, zone, enabled);
+        bool valid = authorizationBridge.authorize(
+            checkpoint, signature,
+            proof.v3A, proof.v3B, proof.v3C, proof.v3Signals,
+            proof.v4A, proof.v4B, proof.v4C, proof.v4Signals,
+            address(this), 0, intent, currentNonce
+        );
+        if (!valid) revert AuthorizationFailed();
+        nonce = currentNonce + 1;
+
+        address gateway = IEchoBootstrapDualV4(
+            authorizationBridge.dualProofVerifier()
+        ).v4Gateway();
+        EchoGeographicPolicyRegistryV4 geo = EchoGeographicPolicyRegistryV4(
+            IEchoBootstrapGatewayV4(gateway).policyRegistry()
+        );
+        if (enabled) geo.setGeographicPolicy(delegatee, zone);
+        else geo.disableGeographicPolicy(delegatee);
+
+        emit ProofAuthorizedGeographicPolicy(
+            delegatee, EchoGeographicZoneV4.hash(zone), enabled, currentNonce
+        );
+        delegationLock = 0;
+        return true;
+    }
+
 }
