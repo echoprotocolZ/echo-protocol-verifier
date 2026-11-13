@@ -48,8 +48,8 @@ describe("Echo V4: geographic administration downstream atomic rollback", functi
       );
       await tx.wait();
     }, (error) => {
-      assert.match(String(error), new RegExp(selector, "i"),
-        "must reach injected downstream failure, not fail proof validation");
+      assert.match([String(error), error?.data, error?.error?.data, error?.info?.error?.data, error?.shortMessage].filter(Boolean).join(" | "), new RegExp(selector, "i"),
+        "must reach injected downstream failure; actual revert: " + String(error) + " | data=" + String(error?.data) + " | nested=" + String(error?.info?.error?.data));
       return true;
     });
     assert.equal(await account.nonce(), 0n, "nonce rolled back");
