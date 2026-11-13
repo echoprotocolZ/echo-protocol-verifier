@@ -17,7 +17,11 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
 
     bytes32 public constant DELEGATION_DOMAIN =
         keccak256("ECHO_PROTOCOL_Z_V4_DELEGATEE_ADMIN_V1");
-    uint256 private delegationLock;\n\n    function _isProofAdministrationLocked() internal view override returns (bool) {\n        return delegationLock != 0;\n    }
+    uint256 private delegationLock;
+
+    function _isProofAdministrationLocked() internal view override returns (bool) {
+        return delegationLock != 0;
+    }
     uint64 public immutable delegationMaxTimeDrift;
 
     event ProofAuthorizedDelegatee(address indexed delegatee, bool authorized, uint256 nonce);
