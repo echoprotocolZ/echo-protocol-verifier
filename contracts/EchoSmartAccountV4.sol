@@ -42,7 +42,7 @@ contract EchoSmartAccountV4 {
     IEchoAuthorizationBridgeForAccountV4 public immutable authorizationBridge;
 
     uint256 public nonce;
-    uint256 private executionLock;
+    uint256 internal executionLock;
 
     event Executed(address indexed target, uint256 value, bytes data, uint256 nonce);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
@@ -62,13 +62,13 @@ contract EchoSmartAccountV4 {
     }
 
     modifier nonReentrantExecution() {
-        if (executionLock != 0) revert Unauthorized();
+        if (executionLock != 0 || _isProofAdministrationLocked()) revert Unauthorized();
         executionLock = 1;
         _;
         executionLock = 0;
     }
 
-    function executeAuthorized(
+    /// @dev Derived accounts may block execution during proof administration.\n    function _isProofAdministrationLocked() internal view virtual returns (bool) {\n        return false;\n    }\n\n    function executeAuthorized(
         IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
         bytes calldata signature,
         uint[2] calldata v3A,
