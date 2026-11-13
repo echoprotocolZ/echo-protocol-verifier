@@ -18,6 +18,7 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
     bytes32 public constant DELEGATION_DOMAIN =
         keccak256("ECHO_PROTOCOL_Z_V4_DELEGATEE_ADMIN_V1");
     uint256 private delegationLock;
+    uint64 public immutable delegationMaxTimeDrift;
 
     event ProofAuthorizedDelegatee(address indexed delegatee, bool authorized, uint256 nonce);
 
@@ -41,7 +42,9 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
         uint64 maxTimeDrift_
     ) EchoSmartAccountV4Bootstrapped(
         owner_, entryPoint_, bridge_, validator_, initialZone_, maxTimeDrift_
-    ) {}
+    ) {
+        delegationMaxTimeDrift = maxTimeDrift_;
+    }
 
     /// @notice Canonical calldata for a proof-authorized permission update.
     /// @dev Binds domain, chain, account, delegatee, permission and nonce.
@@ -158,8 +161,35 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
         EchoGeographicPolicyRegistryV4 geo = EchoGeographicPolicyRegistryV4(
             IEchoBootstrapGatewayV4(gateway).policyRegistry()
         );
-        if (enabled) geo.setGeographicPolicy(delegatee, zone);
-        else geo.disableGeographicPolicy(delegatee);
+        bytes32 zoneHash = EchoGeographicZoneV4.hash(zone);
+        EchoAttestationRegistryV3 registry = EchoAttestationRegistryV3(
+            authorizationBridge.checkpointRegistry()
+        );
+        if (enabled) {
+            geo.setGeographicPolicy(delegatee, zone);
+            registry.setAttestationPolicy(
+                delegatee,
+                EchoAttestationRegistryV3.AttestationPolicy({
+                    allowedZoneHash: zoneHash,
+                    maxTimeDrift: delegationMaxTimeDrift,
+                    requiredTier: EchoAttestationRegistryV3.AttestationTier.ValidatorOnly,
+                    allowValidatorFallback: false,
+                    enabled: true
+                })
+            );
+        } else {
+            geo.disableGeographicPolicy(delegatee);
+            registry.setAttestationPolicy(
+                delegatee,
+                EchoAttestationRegistryV3.AttestationPolicy({
+                    allowedZoneHash: bytes32(0),
+                    maxTimeDrift: 0,
+                    requiredTier: EchoAttestationRegistryV3.AttestationTier.ValidatorOnly,
+                    allowValidatorFallback: false,
+                    enabled: false
+                })
+            );
+        }
 
         emit ProofAuthorizedGeographicPolicy(
             delegatee, EchoGeographicZoneV4.hash(zone), enabled, currentNonce
