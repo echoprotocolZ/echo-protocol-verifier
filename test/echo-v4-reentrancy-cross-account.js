@@ -20,12 +20,13 @@ describe("Echo V4 security: reentrancy and account isolation",function(){
   const b=await deploy("EchoSmartAccountV4DelegationCandidate",owner.address,ethers.ZeroAddress,bridge.target,validator.address,zone,3600n);
   const probe=await deploy("EchoReentryProbe");
   const proofFor=(account,target,data)=>proveAuthorizedCall({account:account.target,delegatee:account.target,validator,registry:registry.target,target,data,nonce:0n,zone});
-  const payload=ethers.concat([a.interface.getFunction("executeAuthorized").selector,ethers.zeroPadValue("0x",32)]); // malformed nested call must still be rejected by lock
-  await(await probe.configure(a.target,payload)).wait();
   const data=probe.interface.encodeFunctionData("trigger");
   const p=await proofFor(a,probe.target,data);
   const args=[p.checkpoint,p.signature,p.v3A,p.v3B,p.v3C,p.v3Signals,p.v4A,p.v4B,p.v4C,p.v4Signals,probe.target,0n,data];
   const digest=await registry.checkpointDigest(p.checkpoint);
+  // A fully ABI-encoded nested execution, not malformed calldata.
+  const payload=a.interface.encodeFunctionData("executeAuthorized",args);
+  await(await probe.configure(a.target,payload)).wait();
   await assert.rejects(async()=>{const tx=await b.connect(owner).executeAuthorized(...args);await tx.wait();});
   assert.equal(await b.nonce(),0n);
   assert.equal(await registry.consumedCheckpoints(digest),false);
