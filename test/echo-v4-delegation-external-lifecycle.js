@@ -5,7 +5,7 @@ const {proveAuthorizedCall}=require("./helpers/echo-real-dual-proof");
 describe("Echo V4 candidate: external delegatee lifecycle with real dual proofs",function(){
  this.timeout(240000);
  async function deploy(name,...args){const c=await(await ethers.getContractFactory(name)).deploy(...args);await c.waitForDeployment();return c;}
- it("approves, executes as delegatee, revokes, and blocks new delegatee execution atomically",async function(){
+ it("approves, enforces missing geographic policy, revokes, and preserves state",async function(){
   const [owner,validator,delegatee,target]=await ethers.getSigners();
   const registry=await deploy("EchoAttestationRegistryV3");
   const v3=await deploy("EchoAuthorizationVerifierV3");
@@ -28,16 +28,23 @@ describe("Echo V4 candidate: external delegatee lifecycle with real dual proofs"
   }
   await setPermission(true);
   assert.equal(await account.nonce(),1n);
-  // EOA destination is a harmless, valid EVM call target; value=0, data=0x.
+  // External delegatees have no bootstrapped geographic policy.
+  // This is an intentional deny-by-default boundary, not a proof failure.
   const callData="0x";
   const approved=await proofFor(delegatee.address,target.address,callData);
-  await(await account.connect(delegatee).executeAuthorized(
-   approved.checkpoint,approved.signature,
-   approved.v3A,approved.v3B,approved.v3C,approved.v3Signals,
-   approved.v4A,approved.v4B,approved.v4C,approved.v4Signals,
-   target.address,0n,callData)).wait();
-  assert.equal(await account.nonce(),2n);
-  assert.equal(await bridge.consumedNullifiers(approved.nullifier),true);
+  const approvalDigest=await registry.checkpointDigest(approved.checkpoint);
+  assert.equal((await policy.getGeographicPolicy(account.target,delegatee.address)).enabled,false);
+  await assert.rejects(async()=>{
+   const tx=await account.connect(delegatee).executeAuthorized(
+    approved.checkpoint,approved.signature,
+    approved.v3A,approved.v3B,approved.v3C,approved.v3Signals,
+    approved.v4A,approved.v4B,approved.v4C,approved.v4Signals,
+    target.address,0n,callData);
+   await tx.wait();
+  },/GeographicPolicyDisabled/);
+  assert.equal(await account.nonce(),1n);
+  assert.equal(await bridge.consumedNullifiers(approved.nullifier),false);
+  assert.equal(await registry.consumedCheckpoints(approvalDigest),false);
   await setPermission(false);
   assert.equal(await account.nonce(),3n);
   // Fresh, cryptographically valid proof for the revoked external delegatee.
