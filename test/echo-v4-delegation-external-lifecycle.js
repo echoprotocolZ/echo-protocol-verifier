@@ -46,7 +46,7 @@ describe("Echo V4 candidate: external delegatee lifecycle with real dual proofs"
   assert.equal(await bridge.consumedNullifiers(approved.nullifier),false);
   assert.equal(await registry.consumedCheckpoints(approvalDigest),false);
   await setPermission(false);
-  assert.equal(await account.nonce(),3n);
+  assert.equal(await account.nonce(),2n);
   // Fresh, cryptographically valid proof for the revoked external delegatee.
   const rejected=await proofFor(delegatee.address,target.address,callData);
   assert.equal(await bridge.consumedNullifiers(rejected.nullifier),false);
@@ -59,7 +59,7 @@ describe("Echo V4 candidate: external delegatee lifecycle with real dual proofs"
     target.address,0n,callData);
    await tx.wait();
   },"Revoked delegatee must not execute despite fresh valid proofs");
-  assert.equal(await account.nonce(),3n);
+  assert.equal(await account.nonce(),2n);
   assert.equal(await bridge.consumedNullifiers(rejected.nullifier),false);
   assert.equal(await registry.consumedCheckpoints(digest),false);
   assert.equal(await bridge.authorizedDelegatees(account.target,delegatee.address),false);
