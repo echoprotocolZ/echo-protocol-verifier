@@ -68,7 +68,12 @@ contract EchoSmartAccountV4 {
         executionLock = 0;
     }
 
-    /// @dev Derived accounts may block execution during proof administration.\n    function _isProofAdministrationLocked() internal view virtual returns (bool) {\n        return false;\n    }\n\n    function executeAuthorized(
+    /// @dev Derived accounts may block execution during proof administration.
+    function _isProofAdministrationLocked() internal view virtual returns (bool) {
+        return false;
+    }
+
+    function executeAuthorized(
         IEchoAuthorizationBridgeForAccountV4.SignedCheckpoint calldata checkpoint,
         bytes calldata signature,
         uint[2] calldata v3A,
