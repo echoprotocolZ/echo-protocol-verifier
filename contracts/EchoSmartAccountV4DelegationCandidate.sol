@@ -17,7 +17,7 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
 
     bytes32 public constant DELEGATION_DOMAIN =
         keccak256("ECHO_PROTOCOL_Z_V4_DELEGATEE_ADMIN_V1");
-    uint256 private delegationLock;
+    uint256 private delegationLock;\n\n    function _isProofAdministrationLocked() internal view override returns (bool) {\n        return delegationLock != 0;\n    }
     uint64 public immutable delegationMaxTimeDrift;
 
     event ProofAuthorizedDelegatee(address indexed delegatee, bool authorized, uint256 nonce);
@@ -72,7 +72,7 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
         address delegatee,
         bool authorized
     ) external returns (bool) {
-        if (delegationLock != 0) revert DelegationReentrancy();
+        if (delegationLock != 0 || executionLock != 0) revert DelegationReentrancy();
         delegationLock = 1;
 
         if (
@@ -134,7 +134,7 @@ contract EchoSmartAccountV4DelegationCandidate is EchoSmartAccountV4Bootstrapped
         EchoGeographicZoneV4.Zone calldata zone,
         bool enabled
     ) external returns (bool) {
-        if (delegationLock != 0) revert DelegationReentrancy();
+        if (delegationLock != 0 || executionLock != 0) revert DelegationReentrancy();
         delegationLock = 1;
         if (
             msg.sender != owner ||
