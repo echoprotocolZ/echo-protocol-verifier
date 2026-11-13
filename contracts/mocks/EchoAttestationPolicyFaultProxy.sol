@@ -16,7 +16,9 @@ contract EchoAttestationPolicyFaultProxy {
         blockedDelegatee = blockedDelegatee_;
     }
 
-    struct Policy { bytes32 allowedZoneHash; uint64 maxTimeDrift; uint8 requiredTier; bool allowValidatorFallback; bool enabled; }\n\n    // Exact selector of EchoAttestationRegistryV3.setAttestationPolicy.
+    struct Policy { bytes32 allowedZoneHash; uint64 maxTimeDrift; uint8 requiredTier; bool allowValidatorFallback; bool enabled; }
+
+    // Exact selector of EchoAttestationRegistryV3.setAttestationPolicy.
     function setAttestationPolicy(
         address delegatee,
         Policy calldata policy
