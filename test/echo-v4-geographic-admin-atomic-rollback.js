@@ -69,7 +69,7 @@ describe("Echo V4: geographic administration downstream atomic rollback", functi
       );
       await tx.wait();
     }, (error) => {
-      assert.match(String(error), new RegExp(selector, "i"));
+      assert.match([String(error), error?.data, error?.error?.data, error?.info?.error?.data].filter(Boolean).join(" | "), /InjectedAttestationPolicyFailure|0xdcee7a32/i);
       return true;
     });
   });
