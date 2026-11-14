@@ -18,6 +18,8 @@ jobs:
           cache: npm
       - name: Reproducible dependency installation
         run: npm ci --ignore-scripts
+      - name: Quarantine incompatible legacy V3 signal layout
+        run: node scripts/check-v3-legacy-quarantine.js
       - name: Check legacy Groth16 verifier ABI shape
         run: node scripts/check-v3-verifier-abi.js
       - name: Enforce V3 public signal ordering compatibility
