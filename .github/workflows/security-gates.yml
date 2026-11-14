@@ -18,6 +18,8 @@ jobs:
           cache: npm
       - name: Reproducible dependency installation
         run: npm ci --ignore-scripts
+      - name: Guard signed checkpoint binding source invariants
+        run: node scripts/check-checkpoint-binding-source.js
       - name: Compile from clean checkout
         run: npx hardhat compile
       - name: Run Hardhat regression suite
