@@ -47,6 +47,46 @@ jobs:
         run: npx hardhat test
       - name: Dependency audit (production packages)
         run: npm audit --omit=dev --audit-level=high
+  security-gate-summary:
+    name: Release readiness (fail closed)
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - clean-build-and-tests
+      - independent-hardhat-regressions
+      - independent-dependency-audit
+      - bound-circuit-compile
+      - groth16-artifact-integrity
+    steps:
+      - name: Summarize independently executed gates
+        env:
+          GATE_BUILD: ${{ needs.clean-build-and-tests.result }}
+          GATE_HARDHAT: ${{ needs.independent-hardhat-regressions.result }}
+          GATE_AUDIT: ${{ needs.independent-dependency-audit.result }}
+          GATE_BOUND: ${{ needs.bound-circuit-compile.result }}
+          GATE_GROTH16: ${{ needs.groth16-artifact-integrity.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Echo Protocol Z security gate results"
+            echo "| Gate | Result |"
+            echo "|---|---|"
+            echo "| Clean build and circuit checks | $GATE_BUILD |"
+            echo "| Independent Hardhat suite | $GATE_HARDHAT |"
+            echo "| Dependency audit | $GATE_AUDIT |"
+            echo "| Bound checkpoint circuit | $GATE_BOUND |"
+            echo "| Groth16 artifact integrity | $GATE_GROTH16 |"
+            echo
+            echo "Passing automated checks do not replace an independent security audit."
+          } >> "$GITHUB_STEP_SUMMARY"
+          for result in "$GATE_BUILD" "$GATE_HARDHAT" "$GATE_AUDIT" "$GATE_BOUND" "$GATE_GROTH16"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::Security release gate blocked: one or more required jobs are not successful."
+              exit 1
+            fi
+          done
+          echo "All automated gates passed; independent audit still required."
   independent-hardhat-regressions:
     # Runs regardless of failures in circuit compatibility or proving-key jobs.
     # A failed proof gate must not hide Solidity regression test results.
