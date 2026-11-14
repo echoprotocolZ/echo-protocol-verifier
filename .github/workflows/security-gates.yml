@@ -28,6 +28,13 @@ jobs:
           npx circom2 EchoAuthorizationVerifierV3Aligned.circom --r1cs --wasm --sym -l node_modules -o build/v3-aligned
           test -s build/v3-aligned/EchoAuthorizationVerifierV3Aligned.r1cs
           node scripts/test-v3-aligned-public-signals.js
+          node scripts/report-v3-aligned-artifacts.js
+      - name: Upload candidate V3 circuit manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-aligned-build-manifest
+          path: build/v3-aligned/artifact-manifest.json
+          if-no-files-found: error
       - name: Compile from clean checkout
         run: npx hardhat compile
       - name: Run Hardhat regression suite
