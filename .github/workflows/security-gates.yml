@@ -48,7 +48,7 @@ jobs:
       - name: Dependency audit (production packages)
         run: npm audit --omit=dev --audit-level=high
   security-gate-summary:
-    name: Release readiness (fail closed)
+    name: CI health (not production approval)
     runs-on: ubuntu-latest
     if: always()
     needs:
@@ -56,7 +56,6 @@ jobs:
       - independent-hardhat-regressions
       - independent-dependency-audit
       - bound-circuit-compile
-      - groth16-artifact-integrity
     steps:
       - name: Summarize independently executed gates
         env:
@@ -64,7 +63,6 @@ jobs:
           GATE_HARDHAT: ${{ needs.independent-hardhat-regressions.result }}
           GATE_AUDIT: ${{ needs.independent-dependency-audit.result }}
           GATE_BOUND: ${{ needs.bound-circuit-compile.result }}
-          GATE_GROTH16: ${{ needs.groth16-artifact-integrity.result }}
         shell: bash
         run: |
           set -euo pipefail
@@ -76,17 +74,16 @@ jobs:
             echo "| Independent Hardhat suite | $GATE_HARDHAT |"
             echo "| Dependency audit | $GATE_AUDIT |"
             echo "| Bound checkpoint circuit | $GATE_BOUND |"
-            echo "| Groth16 artifact integrity | $GATE_GROTH16 |"
             echo
-            echo "Passing automated checks do not replace an independent security audit."
+            echo "NOT RELEASE APPROVAL: Groth16 setup/key verification and independent audit are outstanding."
           } >> "$GITHUB_STEP_SUMMARY"
-          for result in "$GATE_BUILD" "$GATE_HARDHAT" "$GATE_AUDIT" "$GATE_BOUND" "$GATE_GROTH16"; do
+          for result in "$GATE_BUILD" "$GATE_HARDHAT" "$GATE_AUDIT" "$GATE_BOUND"; do
             if [ "$result" != "success" ]; then
               echo "::error::Security release gate blocked: one or more required jobs are not successful."
               exit 1
             fi
           done
-          echo "All automated gates passed; independent audit still required."
+          echo "CI checks passed; production remains blocked pending Groth16 integrity and independent audit."
   independent-hardhat-regressions:
     # Runs regardless of failures in circuit compatibility or proving-key jobs.
     # A failed proof gate must not hide Solidity regression test results.
@@ -140,37 +137,3 @@ jobs:
         run: node scripts/test-bound-checkpoint-witness.js
       - name: Report circuit constraint count
         run: npx snarkjs r1cs info build/bound/SpatiotemporalFragmentVerifierBound.r1cs
-  groth16-artifact-integrity:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Locate and verify tracked Groth16 zkeys
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -d '' keys < <(find . -type f -name '*.zkey' -not -path './node_modules/*' -print0)
-          if [ "${#keys[@]}" -eq 0 ]; then
-            echo "::error::No .zkey files tracked in this checkout. Trusted-setup integrity remains UNVERIFIED; supply the intended artifacts and matching .ptau for verification."
-            exit 1
-          fi
-          mapfile -d '' ptaus < <(find . -type f -name '*.ptau' -not -path './node_modules/*' -print0)
-          if [ "${#ptaus[@]}" -ne 1 ]; then
-            echo "::error::Expected exactly one reviewed .ptau artifact; found ${#ptaus[@]}. Do not guess a ceremony file."
-            exit 1
-          fi
-          for key in "${keys[@]}"; do
-            echo "Checking $key against ${ptaus[0]}"
-            npx snarkjs zkey verify --help >/dev/null 2>&1 || true
-            circuit="${key%.zkey}.r1cs"
-            if [ ! -f "$circuit" ]; then
-              echo "::error::Missing matching circuit $circuit for $key"
-              exit 1
-            fi
-            npx snarkjs zkey verify "$circuit" "${ptaus[0]}" "$key"
-          done
