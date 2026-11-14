@@ -30,6 +30,7 @@ jobs:
           npx circom2 EchoAuthorizationVerifierV3Aligned.circom --r1cs --wasm --sym -l node_modules -o build/v3-aligned
           test -s build/v3-aligned/EchoAuthorizationVerifierV3Aligned.r1cs
           node scripts/test-v3-aligned-public-signals.js
+          node scripts/test-v3-aligned-math-boundaries.js
           node scripts/check-v3-aligned-r1cs-witness.js
           node scripts/report-v3-aligned-artifacts.js
       - name: Upload candidate V3 circuit manifest
