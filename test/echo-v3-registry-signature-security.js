@@ -60,6 +60,33 @@ describe("ECHO V3 registry signed checkpoint security", function () {
     const signature = await f.sign(f.checkpoint, f.validator, { ...f.domain, chainId: f.domain.chainId + 1n });
     await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
   });
+  it("rejects signatures intended for another registry contract", async () => {
+    const f = await fixture();
+    const otherRegistry = await (await ethers.getContractFactory("EchoAttestationRegistryV3")).deploy();
+    await otherRegistry.waitForDeployment();
+    const signature = await f.sign(f.checkpoint, f.validator, {
+      ...f.domain, verifyingContract: await otherRegistry.getAddress()
+    });
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
+  });
+  it("rejects authorization commitment substitution", async () => {
+    const f = await fixture();
+    const signature = await f.sign({
+      ...f.checkpoint, authorizationCommitment: ethers.toBeHex(999n, 32)
+    });
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
+  });
+  it("rejects delegatee substitution", async () => {
+    const f = await fixture();
+    const signature = await f.sign({ ...f.checkpoint, delegatee: f.outsider.address });
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
+  });
+  it("rejects signatures after validator trust is revoked", async () => {
+    const f = await fixture();
+    const signature = await f.sign(f.checkpoint);
+    await (await f.registry.connect(f.account).setValidatorSigner(f.validator.address, false)).wait();
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
+  });
   it("rejects an untrusted validator", async () => {
     const f = await fixture();
     const signature = await f.sign(f.checkpoint, f.outsider);
