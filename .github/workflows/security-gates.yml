@@ -42,6 +42,8 @@ jobs:
           npx circom2 SpatiotemporalFragmentVerifierBound.circom --r1cs --wasm --sym -l node_modules -o build/bound
           test -s build/bound/SpatiotemporalFragmentVerifierBound.r1cs
           test -s build/bound/SpatiotemporalFragmentVerifierBound_js/SpatiotemporalFragmentVerifierBound.wasm
+      - name: Run adversarial checkpoint witness regressions
+        run: node scripts/test-bound-checkpoint-witness.js
       - name: Report circuit constraint count
         run: npx snarkjs r1cs info build/bound/SpatiotemporalFragmentVerifierBound.r1cs
   groth16-artifact-integrity:
