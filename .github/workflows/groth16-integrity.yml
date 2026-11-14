@@ -1,0 +1,41 @@
+name: Echo Groth16 trusted setup verification (manual release blocker)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  groth16-artifact-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Locate and verify tracked Groth16 zkeys
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' keys < <(find . -type f -name '*.zkey' -not -path './node_modules/*' -print0)
+          if [ "${#keys[@]}" -eq 0 ]; then
+            echo "::error::No .zkey files tracked in this checkout. Trusted-setup integrity remains UNVERIFIED; supply the intended artifacts and matching .ptau for verification."
+            exit 1
+          fi
+          mapfile -d '' ptaus < <(find . -type f -name '*.ptau' -not -path './node_modules/*' -print0)
+          if [ "${#ptaus[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one reviewed .ptau artifact; found ${#ptaus[@]}. Do not guess a ceremony file."
+            exit 1
+          fi
+          for key in "${keys[@]}"; do
+            echo "Checking $key against ${ptaus[0]}"
+            npx snarkjs zkey verify --help >/dev/null 2>&1 || true
+            circuit="${key%.zkey}.r1cs"
+            if [ ! -f "$circuit" ]; then
+              echo "::error::Missing matching circuit $circuit for $key"
+              exit 1
+            fi
+            npx snarkjs zkey verify "$circuit" "${ptaus[0]}" "$key"
+          done
+
