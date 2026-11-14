@@ -24,6 +24,26 @@ jobs:
         run: npx hardhat test
       - name: Dependency audit (production packages)
         run: npm audit --omit=dev --audit-level=high
+  bound-circuit-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Compile hardened checkpoint-bound circuit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/bound
+          npx circom2 SpatiotemporalFragmentVerifierBound.circom --r1cs --wasm --sym -l node_modules -o build/bound
+          test -s build/bound/SpatiotemporalFragmentVerifierBound.r1cs
+          test -s build/bound/SpatiotemporalFragmentVerifierBound_js/SpatiotemporalFragmentVerifierBound.wasm
+      - name: Report circuit constraint count
+        run: npx snarkjs r1cs info build/bound/SpatiotemporalFragmentVerifierBound.r1cs
   groth16-artifact-integrity:
     runs-on: ubuntu-latest
     timeout-minutes: 20
