@@ -105,6 +105,36 @@ describe("ECHO V3 registry signed checkpoint security", function () {
     const second = await f.sign(secondCheckpoint);
     await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(secondCheckpoint, second));
   });
+  it("rejects future-dated signed checkpoints", async () => {
+    const f = await fixture();
+    const future = { ...f.checkpoint, timestamp: f.checkpoint.timestamp + 3600n };
+    const signature = await f.sign(future);
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(future, signature));
+  });
+  it("rejects checkpoints older than allowed drift", async () => {
+    const f = await fixture();
+    const stale = { ...f.checkpoint, timestamp: f.checkpoint.timestamp - 3601n };
+    const signature = await f.sign(stale);
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(stale, signature));
+  });
+  it("rejects a disabled attestation policy", async () => {
+    const f = await fixture();
+    await (await f.registry.connect(f.account).setAttestationPolicy(f.delegatee.address, {
+      allowedZoneHash: f.checkpoint.zoneHash, maxTimeDrift: 3600n,
+      requiredTier: 0, allowValidatorFallback: false, enabled: false,
+    })).wait();
+    const signature = await f.sign(f.checkpoint);
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
+  });
+  it("rejects validator-only checkpoint consumption under HardwareStrict policy", async () => {
+    const f = await fixture();
+    await (await f.registry.connect(f.account).setAttestationPolicy(f.delegatee.address, {
+      allowedZoneHash: f.checkpoint.zoneHash, maxTimeDrift: 3600n,
+      requiredTier: 2, allowValidatorFallback: false, enabled: true,
+    })).wait();
+    const signature = await f.sign(f.checkpoint);
+    await assert.rejects(f.registry.connect(f.account).consumeCheckpoint(f.checkpoint, signature));
+  });
   it("rejects a signed checkpoint from an unauthorized zone", async () => {
     const f = await fixture();
     const other = { ...f.checkpoint, zoneHash: ethers.keccak256(ethers.toUtf8Bytes("other-zone")) };
