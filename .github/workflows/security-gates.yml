@@ -47,6 +47,37 @@ jobs:
         run: npx hardhat test
       - name: Dependency audit (production packages)
         run: npm audit --omit=dev --audit-level=high
+  independent-hardhat-regressions:
+    # Runs regardless of failures in circuit compatibility or proving-key jobs.
+    # A failed proof gate must not hide Solidity regression test results.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Compile contracts
+        run: npx hardhat compile
+      - name: Run full Hardhat regression suite
+        run: npx hardhat test
+  independent-dependency-audit:
+    # Separate audit result even if proof compilation or Hardhat tests fail.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
   bound-circuit-compile:
     runs-on: ubuntu-latest
     timeout-minutes: 20
