@@ -50,5 +50,31 @@ async function main() {
   await assert.rejects(calc.calculateWitness(mutated, true),
     "mismatched checkpoint timestamp must violate circuit constraints");
   console.log("PASS: timestamp substitution rejected by circuit");
+  // These tests recalculate the relevant public commitments where needed so
+  // failures exercise the intended authorization relation rather than only
+  // rejecting stale hashes.
+  const rejects = async (label, changed) => {
+    await assert.rejects(calc.calculateWitness(changed, true), label);
+    console.log("PASS: rejected " + label);
+  };
+  await rejects("checkpoint commitment substitution", {
+    ...input, expectedCheckpointCommitment: H("101", input.checkpointY, input.checkpointTimestamp)
+  });
+  await rejects("authorization commitment substitution", {
+    ...input, expectedAuthorizationCommitment: H(auth1, H("101", input.checkpointY, input.checkpointTimestamp))
+  });
+  await rejects("nullifier substitution", {
+    ...input, expectedNullifier: H(input.account, "12345")
+  });
+  await rejects("checkpoint outside time window", {
+    ...input, minTimestamp: "1700000001"
+  });
+  await rejects("checkpoint outside geographic radius", {
+    ...input, targetX: "104"
+  });
+  await rejects("noncanonical checkpoint coordinate", {
+    ...input, checkpointX: "4294967296"
+  });
+
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });
