@@ -10,5 +10,10 @@ assert.deepEqual(icY, Array.from({length: 21}, (_, i) => i), "Expected IC0y thro
 const fieldChecks = [...source.matchAll(/checkField\(calldataload\(add\(_pubSignals,\s*(\d+)\)\)\)/g)].map(m => Number(m[1]));
 assert.deepEqual(fieldChecks, Array.from({length: 20}, (_, i) => i * 32),
   "Verifier must field-check all 20 public signals");
-console.log("PASS: V3 Solidity verifier has 20 signals, 21 IC points, and 20 field checks");
+const multiplications = [...source.matchAll(/g1_mulAccC\(_pVk,\s*IC(\d+)x,\s*IC(\d+)y,\s*calldataload\(add\(pubSignals,\s*(\d+)\)\)\)/g)]
+  .map(m => ({ x: Number(m[1]), y: Number(m[2]), offset: Number(m[3]) }));
+assert.deepEqual(multiplications,
+  Array.from({length: 20}, (_, i) => ({x: i + 1, y: i + 1, offset: i * 32})),
+  "Verifier must multiply each public signal by the corresponding verification-key IC point");
+console.log("PASS: V3 Solidity verifier has 20 signals, 21 IC points, and 20 field checks and IC multiplications");
 console.log("WARNING: ABI shape alone does not prove this verifier key matches the aligned circuit.");
