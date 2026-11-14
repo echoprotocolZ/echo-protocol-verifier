@@ -19,9 +19,14 @@ jobs:
       - name: Reproducible dependency installation
         run: npm ci --ignore-scripts
       - name: Enforce V3 public signal ordering compatibility
-        run: node scripts/check-v3-public-signal-order.js
+        run: node scripts/check-v3-public-signal-order.js EchoAuthorizationVerifierV3Aligned.circom
       - name: Guard signed checkpoint binding source invariants
         run: node scripts/check-checkpoint-binding-source.js
+      - name: Compile aligned V3 circuit candidate
+        run: |
+          mkdir -p build/v3-aligned
+          npx circom2 EchoAuthorizationVerifierV3Aligned.circom --r1cs --wasm --sym -l node_modules -o build/v3-aligned
+          test -s build/v3-aligned/EchoAuthorizationVerifierV3Aligned.r1cs
       - name: Compile from clean checkout
         run: npx hardhat compile
       - name: Run Hardhat regression suite
