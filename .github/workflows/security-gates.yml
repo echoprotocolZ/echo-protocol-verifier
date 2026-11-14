@@ -18,6 +18,8 @@ jobs:
           cache: npm
       - name: Reproducible dependency installation
         run: npm ci --ignore-scripts
+      - name: Check legacy Groth16 verifier ABI shape
+        run: node scripts/check-v3-verifier-abi.js
       - name: Enforce V3 public signal ordering compatibility
         run: node scripts/check-v3-public-signal-order.js EchoAuthorizationVerifierV3Aligned.circom
       - name: Guard signed checkpoint binding source invariants
