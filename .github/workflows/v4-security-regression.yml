@@ -51,41 +51,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t tests < <(python3 - <<'SELECT_TESTS'
-          from pathlib import Path
-          import re
-
-          excluded = re.compile(
-              r"(full-flow|real-proof|"
-              r"echo-v3-real-authorization-integration|"
-              r"echo-v4-real-coordinated-dual-proof|"
-              r"echo-v4-solidity-proof|"
-              r"echo-v4-gateway-error-security|"
-              r"echo-v4-geographic-gateway|"
-              r"echo-z-artifact-integrity|"
-              r"echo-z-positive-initialization)"
-          )
-
-          markers = (
-              "echo-real-dual-proof",
-              "groth16.fullProve",
-              "groth16FullProve",
-              "witnessCalculator",
-              ".wasm",
-              ".zkey",
-              "production-evidence/compiler-output.json",
-              "build/v4-geographic-bound/proofs",
-          )
-
-          for path in sorted(Path("test").glob("*.js")):
-              content = path.read_text(errors="replace")
-              if excluded.search(path.stem):
-                  continue
-              if any(marker in content for marker in markers):
-                  continue
-              print(path)
-          SELECT_TESTS
-          )
+          mapfile -t tests < <(python3 scripts/audit-artifact-independent-coverage.py --print-included)
+          if [ "${#tests[@]}" -eq 0 ]; then
+            echo 'No artifact-independent tests selected' >&2
+            exit 1
+          fi
           echo "Running ${#tests[@]} artifact-independent test files"
           npx hardhat test "${tests[@]}"
 
