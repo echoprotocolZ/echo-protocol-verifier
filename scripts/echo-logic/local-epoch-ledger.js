@@ -23,6 +23,7 @@ function openLocalEpochLedger(directory){
  function acquire(){
   try{fs.mkdirSync(lock,{mode:0o700})}
   catch(e){if(e.code==="EEXIST")throw Error("Fencing ledger busy or stale lock");throw e}
+  let keepLock=false;
   try{
    const old=read();
    if(old===Number.MAX_SAFE_INTEGER)throw Error("Fencing epoch exhausted");
@@ -39,19 +40,13 @@ function openLocalEpochLedger(directory){
    }catch(e){
     if(fd!==undefined)fs.closeSync(fd);
     try{fs.unlinkSync(temp)}catch{}
-    if(renamed)throw Error("Fencing ledger durability uncertain; stop all writers");
+    if(renamed){keepLock=true;throw Error("Fencing ledger durability uncertain; stop all writers")}
     throw Error("Fencing ledger write failed: "+e.message);
    }
    return next;
   }finally{
-   // Never clear lock if persistence may have committed but durability is uncertain.
-   // The lock is intentionally retained in that case.
-   if(fs.existsSync(lock)){
-    try{
-     const current=read();
-     if(current>=1)fs.rmdirSync(lock);
-    }catch{}
-   }
+   // Keep the lock when durability after rename is uncertain.
+   if(!keepLock)fs.rmdirSync(lock);
   }
  }
  function assertCurrent(epoch){
