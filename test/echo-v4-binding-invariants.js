@@ -69,4 +69,37 @@ describe("Echo V4 transaction-binding invariants",function(){
   signals[18]=3n;
   await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
  });
+ it("rejects a changed upper half of the calldata hash",async()=>{
+  signals[9]^=1n;
+  await assert.rejects(checkTx,/InvalidTransaction/);
+ });
+ it("rejects a changed expected nonce",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,0,"0x1234",8),/InvalidNonce/);
+ });
+ it("rejects a changed call payload even when signals are unchanged",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,0,"0x1235",7),/InvalidTransaction/);
+ });
+ it("rejects a changed execution value even when signals are unchanged",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,1,"0x1234",7),/InvalidTransaction/);
+ });
+ it("rejects a changed execution target even when signals are unchanged",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,outsider.address,0,"0x1234",7),/InvalidTransaction/);
+ });
+ it("rejects mismatched checkpoint delegatee",async()=>{
+  signals[4]=BigInt(owner.address);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects mismatched authorization commitment",async()=>{
+  signals[1]=3n;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects checkpoint nonce mismatch",async()=>{
+  checkpoint.nonce=8;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects checkpoint timestamp outside the authorized time window",async()=>{
+  signals[17]=BigInt(checkpoint.timestamp-1);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+
 });
