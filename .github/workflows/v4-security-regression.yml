@@ -59,6 +59,29 @@ jobs:
           echo "Running ${#tests[@]} artifact-independent test files"
           npx hardhat test "${tests[@]}"
 
+  v4-circuit-build:
+    # Compiles the V4 geographic circuit without proving keys or trusted setup.
+    # A successful build is NOT evidence of a valid Groth16 proof.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Compile V4 geographic circuit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/v4-geographic-bound
+          npx --no-install circom2 circuits/v4/EchoGeographicBoundV4.circom \
+            --r1cs --sym --wasm -l node_modules -o build/v4-geographic-bound
+          test -s build/v4-geographic-bound/EchoGeographicBoundV4.r1cs
+          test -s build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm
+          echo 'V4 circuit compile and WASM generation passed; no proof generated'
+
   full-suite-diagnostic:
     # Secrets are unavailable to untrusted pull-request workflows.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/security/v4-zero-trust-hardening'
