@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 "use strict";
-// Stateful real-proof replay test in a disposable Hardhat fork. No live broadcasts.
+// Stateful real-proof replay and rollback test in a disposable Anvil fork. No live broadcasts.
 const fs=require("node:fs"),path=require("node:path"),snarkjs=require("snarkjs");
 const {spawn}=require("node:child_process");
 const {ethers}=require("ethers");
@@ -67,6 +67,43 @@ async function main(){
  const signer=await provider.getSigner(cp.delegatee);
  const snapshot=await network.provider.send("evm_snapshot",[]);
  try{
+  // First establish that the exact genuine proof succeeds against the unmodified target.
+  // eth_call does not persist nonce, checkpoint, or nullifier consumption.
+  await provider.call({from:cp.delegatee,to:cp.account,data:calldata,gasLimit:12000000n});
+  console.log("PASS valid proof preflight against original target");
+  const originalCode=await provider.getCode(target);
+  if(originalCode==="0x")throw Error("Original target has no deployed code");
+  // Replace only the target's bytecode on this disposable fork. The proof,
+  // signature, call data, policy, and authorization contracts remain unchanged.
+  const rollbackSnapshot=await network.provider.send("evm_snapshot",[]);
+  try{
+   await network.provider.send("anvil_setCode",[target,"0x60006000fd"]);
+   if((await provider.getCode(target)).toLowerCase()!=="0x60006000fd")throw Error("Reverting target setup failed");
+   let reverted=false;
+   try{
+    const failed=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
+    const failedReceipt=await failed.wait();
+    reverted=!!failedReceipt&&failedReceipt.status===0;
+   }catch(e){
+    // A JSON-RPC rejection or ethers CALL_EXCEPTION can indicate revert;
+    // the state assertions below still independently verify rollback.
+    reverted=true;
+   }
+   if(!reverted)throw Error("CRITICAL: Reverting target unexpectedly succeeded");
+   if(await account.nonce()!==nonce0||
+      await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
+      await bridge.consumedNullifiers(v3[2])!==null0)
+    throw Error("CRITICAL: Reverting target left partial authorization state");
+   console.log("PASS valid-proof execution with reverting target rejected");
+   console.log("PASS target revert left nonce/checkpoint/nullifier unchanged");
+  }finally{
+   if(!(await network.provider.send("evm_revert",[rollbackSnapshot])))throw Error("Could not restore pre-rollback fork snapshot");
+  }
+  if((await provider.getCode(target)).toLowerCase()!==originalCode.toLowerCase())throw Error("Original target bytecode not restored");
+  if(await account.nonce()!==nonce0||
+     await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
+     await bridge.consumedNullifiers(v3[2])!==null0)
+   throw Error("Authorization state not restored before positive test");
   const tx=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
   const receipt=await tx.wait();
   if(!receipt||receipt.status!==1)throw Error("Fork transaction did not succeed");
@@ -88,7 +125,7 @@ async function main(){
   await network.provider.send("anvil_stopImpersonatingAccount",[cp.delegatee]);
  }
  console.log("STATEFUL REPLAY TEST PASSED on disposable local fork");
- console.log("Atomic rollback after a valid proof reaches a reverting target: NOT TESTED");
+ console.log("ATOMIC ROLLBACK TEST PASSED on disposable local fork");
  console.log("Live transaction broadcast: NO; live POL spent: 0");
  }finally{anvil.kill("SIGTERM");provider.destroy();}
 }
