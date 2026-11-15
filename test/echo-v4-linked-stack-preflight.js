@@ -121,7 +121,8 @@ describe("Echo V4 linked-stack execution preflight",function(){
   assert.equal(await account.nonce(),0n);
  });
  it("reports InvalidAddress for targeting the dual verifier",async()=>{
-  await assert.rejects(()=>attempt(blankCheckpoint(account.target),await bridge.dualProofVerifier()),/InvalidAddress/);
+  const dualVerifierAddress = await bridge.dualProofVerifier();
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),dualVerifierAddress),/InvalidAddress/);
   assert.equal(await account.nonce(),0n);
  });
  it("reports Unauthorized for an unrelated caller",async()=>{
