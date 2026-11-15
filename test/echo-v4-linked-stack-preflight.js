@@ -164,4 +164,29 @@ describe("Echo V4 linked-stack execution preflight",function(){
   assert.equal(await bridge.consumedNullifiers(0),false);
  });
 
+ it("preserves ownership state after rejecting a zero execution target",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),ethers.ZeroAddress),/InvalidAddress/);
+  assert.equal(await account.owner(),owner.address);
+  assert.equal(await account.pendingOwner(),ethers.ZeroAddress);
+ });
+ it("preserves entry point after rejecting a self execution target",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),account.target),/InvalidAddress/);
+  assert.equal(await account.entryPoint(),ethers.ZeroAddress);
+ });
+ it("preserves bridge wiring after rejecting a registry target",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),registry.target),/InvalidAddress/);
+  assert.equal(await account.authorizationBridge(),bridge.target);
+  assert.equal(await bridge.checkpointRegistry(),registry.target);
+ });
+ it("preserves bridge wiring after rejecting a verifier target",async()=>{
+  const verifier=await bridge.dualProofVerifier();
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),verifier),/InvalidAddress/);
+  assert.equal(await bridge.dualProofVerifier(),verifier);
+ });
+ it("does not consume a nonzero nullifier on early target rejection",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),bridge.target),/InvalidAddress/);
+  assert.equal(await bridge.consumedNullifiers(1),false);
+  assert.equal(await account.nonce(),0n);
+ });
+
 });
