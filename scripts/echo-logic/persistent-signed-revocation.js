@@ -19,7 +19,7 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
   if(!stat.isFile()||stat.isSymbolicLink())throw Error("Invalid policy protection guard");
   let value;
   try{value=fs.readFileSync(guard,"utf8")}catch{throw Error("Policy protection guard unreadable")}
-  if(value!=="echo-policy-protected-v1\\n")throw Error("Invalid policy protection guard");
+  if(value!=="echo-policy-protected-v1\n")throw Error("Invalid policy protection guard");
   return true;
  }
  if(requireCommitAuthorization){
@@ -27,7 +27,7 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
    let fd;
    try{
     fd=fs.openSync(guard,"wx",0o600);
-    fs.writeFileSync(fd,"echo-policy-protected-v1\\n");
+    fs.writeFileSync(fd,"echo-policy-protected-v1\n");
     fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
     const dfd=fs.openSync(directory,"r");
     try{fs.fsyncSync(dfd)}finally{fs.closeSync(dfd)}
