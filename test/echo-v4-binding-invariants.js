@@ -174,4 +174,35 @@ describe("Echo V4 transaction-binding invariants",function(){
   await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
  });
 
+ it("accepts a checkpoint exactly at the lower timestamp boundary",async()=>{
+  signals[16]=BigInt(checkpoint.timestamp);
+  await harness.checkCheckpoint(checkpoint,signals);
+ });
+ it("accepts a checkpoint exactly at the upper timestamp boundary",async()=>{
+  signals[17]=BigInt(checkpoint.timestamp);
+  await harness.checkCheckpoint(checkpoint,signals);
+ });
+ it("rejects a checkpoint with a timestamp one second above the upper boundary",async()=>{
+  checkpoint.timestamp+=2;
+  signals[19]=BigInt(checkpoint.timestamp);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a checkpoint with a timestamp one second below the lower boundary",async()=>{
+  checkpoint.timestamp-=2;
+  signals[19]=BigInt(checkpoint.timestamp);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a different checkpoint authorization commitment with unchanged signals",async()=>{
+  checkpoint.authorizationCommitment=ethers.ZeroHash;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a different checkpoint nonce with unchanged signals",async()=>{
+  checkpoint.nonce=0;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("accepts zero-value authorization only when signals match",async()=>{
+  await harness.checkTransaction(signals,owner.address,0,"0x1234",7);
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,1,"0x1234",7),/InvalidTransaction/);
+ });
+
 });
