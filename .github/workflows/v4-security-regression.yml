@@ -66,6 +66,8 @@ jobs:
               "witnessCalculator",
               ".wasm",
               ".zkey",
+              "production-evidence/compiler-output.json",
+              "build/v4-geographic-bound/proofs",
           )
 
           for path in sorted(Path("test").glob("*.js")):
