@@ -124,11 +124,37 @@ async function main(){
      await bridge.consumedNullifiers(v3[2])!==null0)
    throw Error("Authorization state not restored before positive test");
 
+  // Negative integration: preserve genuine proofs and checkpoint signature,
+  // but alter the authorized target call. The V3 transaction binding must reject it.
+  const tamperedData=new ethers.Interface(["function setValue(uint256)"]).encodeFunctionData("setValue",[889n]);
+  if(tamperedData===data)throw Error("Tampered call data was not changed");
+  const tamperedCalldata=iface.encodeFunctionData("executeAuthorized",[cp,signed.signature,a3,b3,c3,s3,a4,b4,c4,s4,target,BigInt(v3[7]),tamperedData]);
+  const tamperSnapshot=await network.provider.send("evm_snapshot",[]);
+  try{
+   let rejected=false;
+   try{
+    const tamperedTx=await signer.sendTransaction({to:cp.account,data:tamperedCalldata,gasLimit:12000000n});
+    const tamperedReceipt=await tamperedTx.wait();
+    rejected=!!tamperedReceipt&&tamperedReceipt.status===0;
+   }catch(e){rejected=true}
+   if(!rejected)throw Error("CRITICAL: Tampered transaction unexpectedly succeeded");
+   if(await account.nonce()!==nonce0||
+      await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
+      await bridge.consumedNullifiers(v3[2])!==null0)
+    throw Error("CRITICAL: Tampered transaction changed authorization state");
+   console.log("PASS altered target calldata rejected with original valid proofs");
+   console.log("PASS tampered execution left nonce/checkpoint/nullifier unchanged");
+  }finally{
+   if(!(await network.provider.send("evm_revert",[tamperSnapshot])))throw Error("Failed to restore fork after tamper test");
+  }
+
+
  }finally{
   await network.provider.send("anvil_stopImpersonatingAccount",[cp.delegatee]);
  }
  console.log("STATEFUL REPLAY TEST PASSED on disposable local fork");
  console.log("ATOMIC ROLLBACK TEST PASSED on disposable local fork");
+ console.log("TRANSACTION TAMPERING TEST PASSED on disposable local fork");
  console.log("Live transaction broadcast: NO; live POL spent: 0");
  }finally{anvil.kill("SIGTERM");provider.destroy();}
 }
