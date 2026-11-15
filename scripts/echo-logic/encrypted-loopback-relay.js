@@ -67,6 +67,12 @@ async function startRelay({relayId,key,port=0,maxReplay=10000,replayDirectory}){
  await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(port,"127.0.0.1",resolve)});
  return {server,port:server.address().port,relayId,messages};
 }
+function verifyReceipt(receipt,{relayId,messageId,share,manifestHash,key}){
+ if(!Buffer.isBuffer(key)||key.length!==32)throw Error("32-byte key required");
+ const payloadDigest=digest(Buffer.from(JSON.stringify({share,manifestHash})));
+ if(!receipt||receipt.version!==2||receipt.relayId!==relayId||receipt.messageId!==messageId||receipt.payloadDigest!==payloadDigest||receipt.accepted!==true||!safeEqual(receipt.mac,h(key,receiptCanonical(receipt))))throw Error("Invalid authenticated receipt");
+ return true;
+}
 async function sendEncrypted({port,relayId,key,share,manifestHash,messageId=crypto.randomBytes(16).toString("hex")}){
  const frame=encrypt({relayId,key,share,manifestHash,messageId});
  const socket=net.connect({host:"127.0.0.1",port});
@@ -76,9 +82,8 @@ async function sendEncrypted({port,relayId,key,share,manifestHash,messageId=cryp
   const promise=readFrame(socket);
   socket.write(pack(frame));
   const receipt=await promise;
-  const payloadDigest=digest(Buffer.from(JSON.stringify({share,manifestHash})));
-  if(receipt.version!==2||receipt.relayId!==relayId||receipt.messageId!==messageId||receipt.payloadDigest!==payloadDigest||receipt.accepted!==true||!safeEqual(receipt.mac,h(key,receiptCanonical(receipt))))throw Error("Invalid authenticated receipt");
+  verifyReceipt(receipt,{relayId,messageId,share,manifestHash,key});
   return receipt;
  }finally{socket.destroy()}
 }
-module.exports={startRelay,sendEncrypted,encrypt,decrypt};
+module.exports={startRelay,sendEncrypted,encrypt,decrypt,verifyReceipt};
