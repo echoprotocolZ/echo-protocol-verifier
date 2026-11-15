@@ -50,4 +50,30 @@ describe("Echo V4 linked-stack execution preflight",function(){
   await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),bridge.target)).wait()});
   assert.equal(await account.nonce(),0n);
  });
+ it("rejects a zero-address execution target without consuming nonce",async()=>{
+  await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),ethers.ZeroAddress)).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects targeting the smart account itself without consuming nonce",async()=>{
+  await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),account.target)).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects an outsider caller without consuming nonce",async()=>{
+  await assert.rejects(async()=>{
+   await(account.connect(outsider).executeAuthorized(
+    blankCheckpoint(account.target),"0x",zeros2,zerosB,zeros2,Array(20).fill(0),
+    zeros2,zerosB,zeros2,Array(5).fill(0),outsider.address,0,"0x"
+   )).wait();
+  });
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects proof-free ownership transfer without changing owner",async()=>{
+  await assert.rejects(async()=>{await(account.transferOwnership(outsider.address)).wait()});
+  assert.equal(await account.owner(),owner.address);
+  assert.equal(await account.pendingOwner(),ethers.ZeroAddress);
+ });
+ it("rejects proof-free entry-point changes without changing configuration",async()=>{
+  await assert.rejects(async()=>{await(account.setEntryPoint(outsider.address)).wait()});
+  assert.equal(await account.entryPoint(),ethers.ZeroAddress);
+ });
 });
