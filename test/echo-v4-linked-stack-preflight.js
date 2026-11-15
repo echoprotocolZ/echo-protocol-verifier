@@ -137,4 +137,31 @@ describe("Echo V4 linked-stack execution preflight",function(){
   assert.equal(await account.nonce(),0n);
  });
 
+ it("reports InvalidAddress for targeting the geographic gateway",async()=>{
+  const dual=await ethers.getContractAt("EchoDualProofVerifierV4",await bridge.dualProofVerifier());
+  const gateway=await dual.v4Gateway();
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),gateway),/InvalidAddress/);
+  assert.equal(await account.nonce(),0n);
+ });
+ it("reports InvalidAddress for targeting the geographic policy registry",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),policy.target),/InvalidAddress/);
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects outsider calls before reaching a protected target check",async()=>{
+  await assert.rejects(()=>account.connect(outsider).executeAuthorized(
+   blankCheckpoint(account.target),"0x",zeros2,zerosB,zeros2,Array(20).fill(0),
+   zeros2,zerosB,zeros2,Array(5).fill(0),bridge.target,0,"0x"
+  ),/Unauthorized/);
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects a mismatched checkpoint account before target validation",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(outsider.address),ethers.ZeroAddress),/Unauthorized/);
+  assert.equal(await account.nonce(),0n);
+ });
+ it("preserves nonce and nullifier after a forbidden bridge target",async()=>{
+  await assert.rejects(()=>attempt(blankCheckpoint(account.target),bridge.target),/InvalidAddress/);
+  assert.equal(await account.nonce(),0n);
+  assert.equal(await bridge.consumedNullifiers(0),false);
+ });
+
 });
