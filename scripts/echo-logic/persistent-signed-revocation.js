@@ -10,6 +10,38 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
  if(!directory||typeof directory!=="string")throw Error("Policy directory required");
  fs.mkdirSync(directory,{recursive:true,mode:0o700});
  const filename=path.join(directory,"revocation-policy.json");
+ // Cooperative downgrade guard: once enabled, legacy callers cannot write.
+ // Not a defense against malicious filesystem actors or atomic fencing.
+ const guard=path.join(directory,".protected-revocation-policy");
+ function guardPresent(){
+  let stat;
+  try{stat=fs.lstatSync(guard)}catch(e){if(e.code==="ENOENT")return false;throw Error("Policy protection guard unreadable")}
+  if(!stat.isFile()||stat.isSymbolicLink())throw Error("Invalid policy protection guard");
+  let value;
+  try{value=fs.readFileSync(guard,"utf8")}catch{throw Error("Policy protection guard unreadable")}
+  if(value!=="echo-policy-protected-v1\\n")throw Error("Invalid policy protection guard");
+  return true;
+ }
+ if(requireCommitAuthorization){
+  if(!guardPresent()){
+   let fd;
+   try{
+    fd=fs.openSync(guard,"wx",0o600);
+    fs.writeFileSync(fd,"echo-policy-protected-v1\\n");
+    fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
+    const dfd=fs.openSync(directory,"r");
+    try{fs.fsyncSync(dfd)}finally{fs.closeSync(dfd)}
+   }catch(e){
+    if(fd!==undefined)fs.closeSync(fd);
+    throw Error("Policy protection initialization failed: "+e.message);
+   }
+  }
+ }else if(guardPresent())throw Error("Protected policy directory requires commit authorization");
+ function ensureProtection(){
+  const present=guardPresent();
+  if(requireCommitAuthorization&&!present)throw Error("Policy protection guard missing");
+  if(!requireCommitAuthorization&&present)throw Error("Protected policy directory requires commit authorization");
+ }
  const store=new SignedRevocationStore(publicKey,{clock});
  let last=null;
  let uncertain=false;
@@ -25,6 +57,7 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
  }
  function apply(signed){
   ensureCertain();
+  ensureProtection();
   if(authorizeCommit)authorizeCommit();
   // Verify in a temporary store before touching disk or active state.
   const candidate=new SignedRevocationStore(publicKey,{clock});
@@ -38,6 +71,7 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
    fs.fsyncSync(fd);
    fs.closeSync(fd);fd=undefined;
    // Recheck immediately before commit; not atomic with the rename.
+   ensureProtection();
    if(authorizeCommit)authorizeCommit();
    fs.renameSync(tmp,filename);renamed=true;
    const dirfd=fs.openSync(directory,"r");
