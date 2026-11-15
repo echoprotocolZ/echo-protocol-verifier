@@ -21,9 +21,8 @@ function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnc
    throw Error("Independent rollback anchors required");
   const policyFloor=rollbackAnchors.policyFloor();
   const epochFloor=rollbackAnchors.epochFloor();
-  if(!Number.isSafeInteger(policyFloor)||policyFloor<0||
-     !Number.isSafeInteger(epochFloor)||epochFloor<0)
-   throw Error("Invalid trusted rollback anchor floor");
+  if(!Number.isSafeInteger(policyFloor)||policyFloor<0)throw Error("Invalid trusted policy floor");
+  if(!Number.isSafeInteger(epochFloor)||epochFloor<0)throw Error("Invalid trusted epoch floor");
   if(policyFloor<observedPolicyFloor||epochFloor<observedEpochFloor)
    throw Error("Trusted rollback anchor floor decreased");
   observedPolicyFloor=policyFloor;
