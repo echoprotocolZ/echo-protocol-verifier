@@ -5,9 +5,16 @@
  * epochs atomically. In-memory coordinators are TEST-ONLY, not distributed.
  */
 const {openExclusiveRevocationWriter}=require("./exclusive-revocation-writer");
-function openFencedRevocationWriter(publicKey,directory,{fence,clock}={}){
+const {assertRollbackAnchors}=require("./rollback-anchor-preflight");
+function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnchors}={}){
  if(!fence||typeof fence.acquire!=="function"||typeof fence.assertCurrent!=="function")
   throw Error("External fencing coordinator required");
+ // Optional independent high-water anchors: check BEFORE issuing a new epoch.
+ if(rollbackAnchors!==undefined){
+  if(!rollbackAnchors||typeof rollbackAnchors.policyFloor!=="function"||typeof rollbackAnchors.epochFloor!=="function")
+   throw Error("Independent rollback anchors required");
+  assertRollbackAnchors({directory,publicKey,clock,policyFloor:rollbackAnchors.policyFloor,epochFloor:rollbackAnchors.epochFloor});
+ }
  // Acquire the local lock first; a failed fence acquisition must release it.
  let epoch;
  const authorizeCommit=()=>{
