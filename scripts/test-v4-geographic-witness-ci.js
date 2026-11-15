@@ -31,6 +31,10 @@ async function main() {
     ["outside-latitude", {...valid, checkpointLat: "101001"}, false],
     ["outside-longitude", {...valid, checkpointLon: "201001"}, false],
     ["wrong-commitment", {...valid, expectedCheckpointCommitment: "0"}, false],
+    ["tampered-timestamp", {...valid, checkpointTimestamp: "1800000001"}, false],
+    ["tampered-checkpoint-latitude", {...valid, checkpointLat: "100051"}, false],
+    ["negative-latitude", {...valid, checkpointLat: "-1"}, false],
+    ["longitude-over-domain", {...valid, checkpointLon: "3600000001"}, false],
     ["invalid-latitude-domain", {...valid, checkpointLat: "1800000001"}, false],
     ["reversed-zone", {...valid, minLat: "101000", maxLat: "100000"}, false],
   ];
