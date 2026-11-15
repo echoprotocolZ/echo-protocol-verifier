@@ -6,6 +6,7 @@ Keep selection logic in sync with v4-security-regression.yml until a
 reviewed explicit manifest replaces the heuristic.
 """
 from pathlib import Path
+import argparse
 import json
 import re
 import sys
@@ -32,6 +33,9 @@ MARKERS = (
 )
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--print-included", action="store_true", help="Print only test paths for CI execution")
+    args = parser.parse_args()
     root = Path("test")
     if not root.is_dir():
         sys.exit("ERROR: run from repository root; test/ missing")
@@ -57,6 +61,10 @@ def main():
     }
     output = Path("artifact-independent-coverage.json")
     output.write_text(json.dumps(report, indent=2) + "\n")
+    if args.print_included:
+        for name in included:
+            print(name)
+        return
     print(f"Artifact-independent files: {len(included)}")
     print(f"Excluded files requiring review: {len(excluded)}")
     for item in excluded:
