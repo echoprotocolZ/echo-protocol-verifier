@@ -6,12 +6,36 @@ const { loadRecords } = require("./amoy-deployment-records");
 
 async function main() {
   if (hre.network.name !== "amoy") throw Error("Use --network amoy");
-  const provider = new hre.ethers.JsonRpcProvider(
-    "https://polygon-amoy.drpc.org", 80002,
-    { batchMaxCount: 1, staticNetwork: true }
-  );
-  const chain = await provider.getNetwork();
-  if (chain.chainId !== 80002n) throw Error("Wrong chain");
+  // Probe endpoints independently. An RPC timeout must not be treated as a proof failure.
+  // Optional AMOY_RPC_URL can point to a user-configured provider.
+  const urls = [...new Set([
+    process.env.AMOY_RPC_URL,
+    "https://polygon-amoy-bor-rpc.publicnode.com",
+    "https://rpc-amoy.polygon.technology",
+    "https://polygon-amoy.drpc.org"
+  ].filter(Boolean))];
+  let provider, chain, lastError;
+  for (const url of urls) {
+    try {
+      const candidate = new hre.ethers.JsonRpcProvider(url, 80002, {
+        batchMaxCount: 1, staticNetwork: true
+      });
+      // Query eth_chainId explicitly: staticNetwork alone is not a network verification.
+      const id = await Promise.race([
+        candidate.send("eth_chainId", []),
+        new Promise((_, reject) => setTimeout(() => reject(Error("RPC probe timeout")), 8000))
+      ]);
+      if (BigInt(id) !== 80002n) throw Error("RPC returned wrong chain ID");
+      provider = candidate;
+      chain = await candidate.getNetwork();
+      console.log("RPC connected:", new URL(url).host);
+      break;
+    } catch (e) {
+      lastError = e;
+      console.log("RPC unavailable:", new URL(url).host, e.shortMessage || e.message);
+    }
+  }
+  if (!provider) throw Error("All Amoy RPC endpoints failed: " + (lastError?.message || "unknown"));
   const address = loadRecords().contracts.EchoSmartAccountV4;
   if (!address || await provider.getCode(address) === "0x")
     throw Error("Smart account missing on Amoy");
