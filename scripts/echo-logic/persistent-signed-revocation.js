@@ -4,7 +4,8 @@ const fs=require("node:fs");
 const path=require("node:path");
 const crypto=require("node:crypto");
 const {SignedRevocationStore}=require("./signed-revocation-policy");
-function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()}={}){
+function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now(),authorizeCommit}={}){
+ if(authorizeCommit!==undefined&&typeof authorizeCommit!=="function")throw Error("Invalid commit authorization hook");
  if(!directory||typeof directory!=="string")throw Error("Policy directory required");
  fs.mkdirSync(directory,{recursive:true,mode:0o700});
  const filename=path.join(directory,"revocation-policy.json");
@@ -23,6 +24,7 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
  }
  function apply(signed){
   ensureCertain();
+  if(authorizeCommit)authorizeCommit();
   // Verify in a temporary store before touching disk or active state.
   const candidate=new SignedRevocationStore(publicKey,{clock});
   if(last)candidate.apply(last);
@@ -34,6 +36,8 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
    fs.writeFileSync(fd,JSON.stringify(signed));
    fs.fsyncSync(fd);
    fs.closeSync(fd);fd=undefined;
+   // Recheck immediately before commit; not atomic with the rename.
+   if(authorizeCommit)authorizeCommit();
    fs.renameSync(tmp,filename);renamed=true;
    const dirfd=fs.openSync(directory,"r");
    try{fs.fsyncSync(dirfd)}finally{fs.closeSync(dirfd)}
