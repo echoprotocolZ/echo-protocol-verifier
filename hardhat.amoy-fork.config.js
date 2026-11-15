@@ -1,6 +1,5 @@
 "use strict";
-// Dedicated local-only Hardhat fork config. Never supplies live signing keys.
-// Polygon Amoy (80002) requires explicit EVM hardfork history for historical fork blocks.
+// Hardhat 2.29-compatible local-only config. Do not include unsupported chains field.
 const base=require("./hardhat.config.js");
 module.exports={
  ...base,
@@ -9,9 +8,6 @@ module.exports={
   hardhat:{
    chainId:80002,
    hardfork:"cancun",
-   chains:new Map([
-    [80002,{hardforkHistory:new Map([["cancun",0]])}]
-   ]),
    allowUnlimitedContractSize:false
   }
  }
