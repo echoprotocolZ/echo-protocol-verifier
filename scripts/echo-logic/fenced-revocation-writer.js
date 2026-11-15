@@ -13,7 +13,7 @@ function openFencedRevocationWriter(publicKey,directory,{fence,clock}={}){
  const authorizeCommit=()=>{
   if(epoch===undefined||fence.assertCurrent(epoch)!==true)throw Error("Fenced writer epoch revoked");
  };
- const writer=openExclusiveRevocationWriter(publicKey,directory,{clock,authorizeCommit});
+ const writer=openExclusiveRevocationWriter(publicKey,directory,{clock,authorizeCommit,requireCommitAuthorization:true});
  try{
   epoch=fence.acquire();
   if(!Number.isSafeInteger(epoch)||epoch<1)throw Error("Invalid fencing epoch");
