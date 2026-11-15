@@ -215,9 +215,14 @@ async function main(){
    "function executeAdministration(address,bytes)",
    "function executeGeographicAdministration(bytes)"
   ]);
-  const owner0=await provider.call({to:cp.account,data:admin.encodeFunctionData("owner")});
-  const pending0=await provider.call({to:cp.account,data:admin.encodeFunctionData("pendingOwner")});
-  const entry0=await provider.call({to:cp.account,data:admin.encodeFunctionData("entryPoint")});
+  const readAdmin=async(name)=>{
+   try{return await provider.call({to:cp.account,data:admin.encodeFunctionData(name)})}
+   catch(e){throw Error("LAUNCH READINESS BLOCKED: deployed account getter "+name+"() reverted; deployed ABI may differ from repository source: "+(e.shortMessage||e.message))}
+  };
+  console.log("DIAGNOSTIC: reading deployed administration state");
+  const owner0=await readAdmin("owner");
+  const pending0=await readAdmin("pendingOwner");
+  const entry0=await readAdmin("entryPoint");
   const ownerAddress=admin.decodeFunctionResult("owner",owner0)[0];
   const candidate=ethers.Wallet.createRandom().address;
   const adminCases=[
