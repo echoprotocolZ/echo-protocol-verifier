@@ -9,8 +9,11 @@ function openFencedRevocationWriter(publicKey,directory,{fence,clock}={}){
  if(!fence||typeof fence.acquire!=="function"||typeof fence.assertCurrent!=="function")
   throw Error("External fencing coordinator required");
  // Acquire the local lock first; a failed fence acquisition must release it.
- const writer=openExclusiveRevocationWriter(publicKey,directory,{clock});
  let epoch;
+ const authorizeCommit=()=>{
+  if(epoch===undefined||fence.assertCurrent(epoch)!==true)throw Error("Fenced writer epoch revoked");
+ };
+ const writer=openExclusiveRevocationWriter(publicKey,directory,{clock,authorizeCommit});
  try{
   epoch=fence.acquire();
   if(!Number.isSafeInteger(epoch)||epoch<1)throw Error("Invalid fencing epoch");
