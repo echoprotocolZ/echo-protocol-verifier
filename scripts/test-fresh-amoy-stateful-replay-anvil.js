@@ -78,7 +78,8 @@ async function main(){
   const rollbackSnapshot=await network.provider.send("evm_snapshot",[]);
   try{
    await network.provider.send("anvil_setCode",[target,"0x60006000fd"]);
-   if((await provider.getCode(target)).toLowerCase()!=="0x60006000fd")throw Error("Reverting target setup failed");
+   const patchedCode=await provider.send("eth_getCode",[target,"latest"]);
+   if(patchedCode.toLowerCase()!=="0x60006000fd")throw Error("Reverting target setup failed: expected 0x60006000fd, got "+patchedCode.slice(0,80));
    let reverted=false;
    try{
     const failed=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
@@ -99,7 +100,7 @@ async function main(){
   }finally{
    if(!(await network.provider.send("evm_revert",[rollbackSnapshot])))throw Error("Could not restore pre-rollback fork snapshot");
   }
-  if((await provider.getCode(target)).toLowerCase()!==originalCode.toLowerCase())throw Error("Original target bytecode not restored");
+  if((await provider.send("eth_getCode",[target,"latest"])).toLowerCase()!==originalCode.toLowerCase())throw Error("Original target bytecode not restored");
   if(await account.nonce()!==nonce0||
      await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
      await bridge.consumedNullifiers(v3[2])!==null0)
