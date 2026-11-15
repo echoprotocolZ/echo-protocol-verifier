@@ -153,6 +153,21 @@ async function main(){
    throw Error("CRITICAL: altered geographic checkpoint changed authorization state");
   console.log("PASS altered checkpoint geographic zone rejected");
   console.log("PASS geographic checkpoint tampering left authorization state unchanged");
+  // Signature integrity: alter only the validator's ECDSA signature while
+  // retaining the original valid checkpoint and both genuine Groth16 proofs.
+  const signatureBytes=ethers.getBytes(signed.signature);
+  if(signatureBytes.length!==65)throw Error("Unexpected checkpoint signature length");
+  signatureBytes[10]^=1;
+  const corruptedSignature=ethers.hexlify(signatureBytes);
+  const signatureCalldata=iface.encodeFunctionData("executeAuthorized",[cp,corruptedSignature,a3,b3,c3,s3,a4,b4,c4,s4,target,BigInt(v3[7]),data]);
+  console.log("DIAGNOSTIC: checking corrupted validator signature");
+  await assertReverts(signatureCalldata,"corrupted validator signature");
+  if(await account.nonce()!==nonce0||
+     await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
+     await bridge.consumedNullifiers(v3[2])!==null0)
+   throw Error("CRITICAL: corrupted validator signature changed authorization state");
+  console.log("PASS corrupted validator signature rejected");
+  console.log("PASS signature rejection left authorization state unchanged");
   console.log("DIAGNOSTIC: beginning tampered transaction test");
   const tamperSnapshot=await network.provider.send("evm_snapshot",[]);
   try{
@@ -187,6 +202,7 @@ async function main(){
  console.log("ATOMIC ROLLBACK TEST PASSED on disposable local fork");
  console.log("TRANSACTION TAMPERING TEST PASSED on disposable local fork");
  console.log("GEOGRAPHIC CHECKPOINT TAMPERING TEST PASSED on disposable local fork");
+ console.log("VALIDATOR SIGNATURE TAMPERING TEST PASSED on disposable local fork");
  console.log("Live transaction broadcast: NO; live POL spent: 0");
  }finally{anvil.kill("SIGTERM");provider.destroy();}
 }
