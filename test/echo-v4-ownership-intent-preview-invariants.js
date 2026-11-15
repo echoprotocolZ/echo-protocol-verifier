@@ -38,10 +38,11 @@ describe("Echo V4 ownership intent preview invariants",function(){
  it("returns the same preview to owner and outsider",async()=>{
   assert.equal(await intent(outsider.address,12345),await account.connect(outsider).ownershipProposalIntent(outsider.address,12345));
  });
- it("supports a zero deadline as preview data without authorizing execution",async()=>{
-  const data=await intent(outsider.address,0);
-  assert.ok(ethers.isHexString(data));
+ it("rejects a zero deadline without changing account state",async()=>{
+  await assert.rejects(()=>intent(outsider.address,0),/InvalidDeadline/);
   assert.equal(await account.nonce(),0n);
+  assert.equal(await account.owner(),owner.address);
+  assert.equal(await account.pendingOwner(),ethers.ZeroAddress);
  });
  it("does not grant administrative rights through repeated previews",async()=>{
   await intent(outsider.address,12345);
