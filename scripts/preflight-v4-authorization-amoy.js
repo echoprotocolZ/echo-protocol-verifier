@@ -32,6 +32,10 @@ async function main() {
   assert(eq(input.chainId, chain.chainId), "V3 input chain ID mismatch");
   assert(eq(input.nonce, nonce), "V3 input nonce is stale");
   assert(eq(checkpoint.nonce, nonce), "Signed checkpoint nonce is stale");
+  assert(eq(checkpoint.nonce, input.nonce), "Signed checkpoint and V3 input nonces differ");
+  assert(eq(checkpoint.account, address), "Signed checkpoint account differs from deployed account");
+  assert(eq(checkpoint.authorizationCommitment, input.expectedAuthorizationCommitment), "Signed checkpoint authorization commitment differs from V3 input");
+  assert(eq(checkpoint.delegatee, input.delegatee), "Signed checkpoint delegatee differs from V3 input");
   assert(eq(input.expectedCheckpointCommitment, checkpoint.checkpointCommitment), "V3 and signed checkpoint commitments differ");
   assert(eq(input.expectedCheckpointCommitment, v4[4]), "V3/V4 checkpoint commitments differ");
   assert(eq(input.checkpointTimestamp, checkpoint.timestamp), "V3 and signed checkpoint timestamps differ");
