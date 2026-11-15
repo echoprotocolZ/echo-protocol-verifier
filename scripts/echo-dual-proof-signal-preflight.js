@@ -28,6 +28,11 @@ for(const [label,i] of [["account",3],["delegatee",4],["validator",5],["target",
  console.log(" "+label+" V3["+i+"]="+v3[i]);
 console.log(" checkpoint commitment="+v3[18]);
 console.log(" zone bounds="+v4.slice(0,4).join(","));
+const now=BigInt(Math.floor(Date.now()/1000));
+check("Authorization has not expired at current time",now<=v3[12]);
+console.log(" current Unix time="+now);
+console.log(" expiry Unix time="+v3[12]);
+console.log(" fixture chain ID="+v3[10]+" (must match execution chain)");
 console.log("\nRESULT: "+(failures.length?failures.length+" structural checks failed":"structural signal checks passed"));
 console.log("Still required: actual checkpoint zoneHash, trusted validator signature,");
 console.log("account and chain compatibility, policy setup, matching on-chain");
