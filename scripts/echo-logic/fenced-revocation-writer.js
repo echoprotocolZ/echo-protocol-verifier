@@ -12,16 +12,26 @@ function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnc
   throw Error("Production fenced writer requires independent rollback anchors");
  if(!fence||typeof fence.acquire!=="function"||typeof fence.assertCurrent!=="function")
   throw Error("External fencing coordinator required");
- // Optional independent high-water anchors: check BEFORE issuing a new epoch.
- if(rollbackAnchors!==undefined){
+ // Pin observed anchor floors within this process. A provider that later
+ // reports a lower floor is rejected instead of silently weakening policy.
+ let observedPolicyFloor=0,observedEpochFloor=0;
+ const checkAnchors=()=>{
+  if(rollbackAnchors===undefined)return;
   if(!rollbackAnchors||typeof rollbackAnchors.policyFloor!=="function"||typeof rollbackAnchors.epochFloor!=="function")
    throw Error("Independent rollback anchors required");
-  assertRollbackAnchors({directory,publicKey,clock,policyFloor:rollbackAnchors.policyFloor,epochFloor:rollbackAnchors.epochFloor});
- }
- const checkAnchors=()=>{
-  if(rollbackAnchors!==undefined)
-   assertRollbackAnchors({directory,publicKey,clock,policyFloor:rollbackAnchors.policyFloor,epochFloor:rollbackAnchors.epochFloor});
+  const policyFloor=rollbackAnchors.policyFloor();
+  const epochFloor=rollbackAnchors.epochFloor();
+  if(!Number.isSafeInteger(policyFloor)||policyFloor<0||
+     !Number.isSafeInteger(epochFloor)||epochFloor<0)
+   throw Error("Invalid trusted rollback anchor floor");
+  if(policyFloor<observedPolicyFloor||epochFloor<observedEpochFloor)
+   throw Error("Trusted rollback anchor floor decreased");
+  observedPolicyFloor=policyFloor;
+  observedEpochFloor=epochFloor;
+  return assertRollbackAnchors({directory,publicKey,clock,
+   policyFloor:()=>policyFloor,epochFloor:()=>epochFloor});
  };
+ checkAnchors();
  // Acquire the local lock first; a failed fence acquisition must release it.
  let epoch;
  const authorizeCommit=()=>{
