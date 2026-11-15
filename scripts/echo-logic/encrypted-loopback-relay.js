@@ -8,6 +8,7 @@
 const net=require("node:net");
 const crypto=require("node:crypto");
 const MAX=2*1024*1024;
+const {createReplayGuard}=require("./durable-replay-guard");
 const h=(key,data)=>crypto.createHmac("sha256",key).update(data).digest("hex");
 const digest=data=>crypto.createHash("sha256").update(data).digest("hex");
 const canonical=x=>JSON.stringify([x.version,x.relayId,x.messageId,x.iv,x.ciphertext,x.tag]);
@@ -39,9 +40,10 @@ function readFrame(socket){
   socket.on("data",onData);socket.once("error",onError);socket.once("close",onClose);
  });
 }
-async function startRelay({relayId,key,port=0,maxReplay=10000}){
+async function startRelay({relayId,key,port=0,maxReplay=10000,replayDirectory}){
  if(!relayId||!Buffer.isBuffer(key)||key.length!==32||!Number.isInteger(maxReplay)||maxReplay<1)throw Error("Invalid relay configuration");
  const messages=[],seen=new Set();
+ const replayGuard=replayDirectory?createReplayGuard(replayDirectory):null;
  const server=net.createServer(socket=>{
   socket.setTimeout(3000,()=>socket.destroy());
   (async()=>{
@@ -52,6 +54,7 @@ async function startRelay({relayId,key,port=0,maxReplay=10000}){
     if(typeof payload.manifestHash!=="string"||!payload.share)throw Error("Invalid fragment");
     if(seen.has(x.messageId))throw Error("Replay");
     const payloadDigest=digest(Buffer.from(JSON.stringify(payload)));
+    if(replayGuard&&!replayGuard.claim(relayId,x.messageId))throw Error("Persistent replay");
     seen.add(x.messageId);
     if(seen.size>maxReplay)seen.delete(seen.values().next().value);
     messages.push({messageId:x.messageId,...payload});
