@@ -65,6 +65,9 @@ async function main(){
  await network.provider.send("anvil_impersonateAccount",[cp.delegatee]);
  await network.provider.send("anvil_setBalance",[cp.delegatee,ethers.toBeHex(ethers.parseEther("2"))]);
  const signer=await provider.getSigner(cp.delegatee);
+ // Launch-readiness acceptance: inspect the target contract's observable
+ // storage before and after the genuine authorized execution.
+ const targetSlot0Before=await provider.send("eth_getStorageAt",[target,"0x0","latest"]);
  const snapshot=await network.provider.send("evm_snapshot",[]);
  try{
   const tx=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
@@ -72,6 +75,10 @@ async function main(){
   if(!receipt||receipt.status!==1)throw Error("Fork transaction did not succeed");
   const nonce1=await account.nonce(),used1=await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce),null1=await bridge.consumedNullifiers(v3[2]);
   if(nonce1!==nonce0+1n||!used1||!null1)throw Error("Post-execution nonce/checkpoint/nullifier invariant failed");
+  const targetSlot0After=await provider.send("eth_getStorageAt",[target,"0x0","latest"]);
+  if(BigInt(targetSlot0After)!==888n||BigInt(targetSlot0Before)===888n)
+   throw Error("LAUNCH READINESS BLOCKED: target slot 0 did not change to expected value 888; inspect target storage layout");
+  console.log("PASS end-to-end target contract state changed to 888");
   console.log("PASS genuine proof-backed fork transaction succeeded");
   console.log("PASS nonce advanced exactly once");
   console.log("PASS checkpoint nonce consumed");
@@ -247,6 +254,7 @@ async function main(){
  }finally{
   await network.provider.send("anvil_stopImpersonatingAccount",[cp.delegatee]);
  }
+ console.log("END-TO-END TARGET STATE ACCEPTANCE PASSED on disposable local fork");
  console.log("STATEFUL REPLAY TEST PASSED on disposable local fork");
  console.log("ATOMIC ROLLBACK TEST PASSED on disposable local fork");
  console.log("TRANSACTION TAMPERING TEST PASSED on disposable local fork");
