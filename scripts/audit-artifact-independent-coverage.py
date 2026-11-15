@@ -50,10 +50,23 @@ def main():
             excluded.append({"path": str(path), "reasons": reasons})
         else:
             included.append(str(path))
+    manifest = json.loads(Path("ci/artifact-dependent-test-manifest.json").read_text())
+    listed = manifest["excluded_files"]
+    if len(listed) != len(set(listed)):
+        sys.exit("ERROR: duplicate files in artifact-dependent manifest")
+    actual = {item["path"] for item in excluded}
+    expected = set(listed)
+    if actual != expected:
+        print("ERROR: artifact-dependent manifest differs from selected exclusions", file=sys.stderr)
+        for name in sorted(actual - expected):
+            print("UNREVIEWED EXCLUSION " + name, file=sys.stderr)
+        for name in sorted(expected - actual):
+            print("STALE EXCLUSION " + name, file=sys.stderr)
+        sys.exit(1)
     if not included:
         sys.exit("ERROR: selector would execute zero tests")
     report = {
-        "classification": "heuristic; not a complete security test manifest",
+        "classification": "heuristic selector with reviewed exclusion manifest; included tests not explicitly classified",
         "included_count": len(included),
         "excluded_count": len(excluded),
         "included": included,
