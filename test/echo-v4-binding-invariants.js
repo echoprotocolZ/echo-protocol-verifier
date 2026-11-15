@@ -139,4 +139,39 @@ describe("Echo V4 transaction-binding invariants",function(){
   await assert.rejects(checkTx,/InvalidTransaction/);
  });
 
+ it("accepts the exact authorization expiry boundary",async()=>{
+  const block=await ethers.provider.getBlock("latest");
+  signals[12]=BigInt(block.timestamp);
+  await checkTx();
+ });
+ it("rejects a future chain ID even when other bindings match",async()=>{
+  signals[10]=signals[10]+100n;
+  await assert.rejects(checkTx,/InvalidChain/);
+ });
+ it("rejects an expected nonce one below the authorized nonce",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,0,"0x1234",6),/InvalidNonce/);
+ });
+ it("rejects a changed calldata length",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,0,"0x123400",7),/InvalidTransaction/);
+ });
+ it("rejects empty calldata substituted for the authorized payload",async()=>{
+  await assert.rejects(()=>harness.checkTransaction(signals,owner.address,0,"0x",7),/InvalidTransaction/);
+ });
+ it("rejects a different checkpoint account address",async()=>{
+  checkpoint.account=outsider.address;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a different checkpoint delegatee address",async()=>{
+  checkpoint.delegatee=owner.address;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a changed checkpoint authorization commitment",async()=>{
+  checkpoint.authorizationCommitment=ethers.zeroPadValue("0x03",32);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a changed checkpoint commitment",async()=>{
+  checkpoint.checkpointCommitment=ethers.zeroPadValue("0x03",32);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+
 });
