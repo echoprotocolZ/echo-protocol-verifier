@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t tests < <(find test -maxdepth 1 -name '*.js' -type f | sort | grep -Ev '/(echo-v2-local-full-flow|echo-v2-local-real-proof|echo-v4-delegation-fresh-proof-cross-account|echo-v3-real-authorization-integration|echo-v3-real-proof|echo-v3-timestamp-real-proof|echo-v4-gateway-error-security|echo-v4-geographic-gateway|echo-v4-real-dual-proof-integration|echo-v4-solidity-proof|echo-z-artifact-integrity|echo-z-positive-initialization|full-flow|real-proof)[.]js$')
+          mapfile -t tests < <(find test -maxdepth 1 -name '*.js' -type f | sort | grep -Ev '/(echo-v2-local-full-flow|echo-v2-local-real-proof|echo-v4-delegation-fresh-proof-cross-account|echo-z-real-proof-staking-integration|echo-v3-real-authorization-integration|echo-v3-real-proof|echo-v3-timestamp-real-proof|echo-v4-gateway-error-security|echo-v4-geographic-gateway|echo-v4-real-dual-proof-integration|echo-v4-solidity-proof|echo-z-artifact-integrity|echo-z-positive-initialization|full-flow|real-proof)[.]js$')
           echo "Running ${#tests[@]} artifact-independent test files"
           npx hardhat test "${tests[@]}"
 
