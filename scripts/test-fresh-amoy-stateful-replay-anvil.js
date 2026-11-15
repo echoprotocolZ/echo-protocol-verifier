@@ -129,20 +129,27 @@ async function main(){
   const tamperedData=new ethers.Interface(["function setValue(uint256)"]).encodeFunctionData("setValue",[889n]);
   if(tamperedData===data)throw Error("Tampered call data was not changed");
   const tamperedCalldata=iface.encodeFunctionData("executeAuthorized",[cp,signed.signature,a3,b3,c3,s3,a4,b4,c4,s4,target,BigInt(v3[7]),tamperedData]);
+  console.log("DIAGNOSTIC: beginning tampered transaction test");
   const tamperSnapshot=await network.provider.send("evm_snapshot",[]);
   try{
+   // eth_call uses the same real verifiers and must revert without waiting for mining.
+   // Timeouts are NOT considered successful rejection.
+   const deadline=async(p,label)=>Promise.race([p,new Promise((_,reject)=>setTimeout(()=>reject(Error("TIMEOUT: "+label)),30000))]);
    let rejected=false;
+   console.log("DIAGNOSTIC: calling tampered authorization (30s timeout)");
    try{
-    const tamperedTx=await signer.sendTransaction({to:cp.account,data:tamperedCalldata,gasLimit:12000000n});
-    const tamperedReceipt=await tamperedTx.wait();
-    rejected=!!tamperedReceipt&&tamperedReceipt.status===0;
-   }catch(e){rejected=true}
-   if(!rejected)throw Error("CRITICAL: Tampered transaction unexpectedly succeeded");
+    await deadline(provider.call({from:cp.delegatee,to:cp.account,data:tamperedCalldata,gasLimit:12000000n}),"tampered eth_call");
+   }catch(e){
+    if(String(e.message).includes("TIMEOUT:"))throw e;
+    if(e.code==="CALL_EXCEPTION"||/execution reverted|revert/i.test(e.shortMessage||e.message||""))rejected=true;
+    else throw e;
+   }
+   if(!rejected)throw Error("CRITICAL: Tampered authorization unexpectedly accepted");
    if(await account.nonce()!==nonce0||
       await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
       await bridge.consumedNullifiers(v3[2])!==null0)
     throw Error("CRITICAL: Tampered transaction changed authorization state");
-   console.log("PASS altered target calldata rejected with original valid proofs");
+   console.log("PASS altered target calldata rejected by eth_call with original valid proofs");
    console.log("PASS tampered execution left nonce/checkpoint/nullifier unchanged");
   }finally{
    if(!(await network.provider.send("evm_revert",[tamperSnapshot])))throw Error("Failed to restore fork after tamper test");
