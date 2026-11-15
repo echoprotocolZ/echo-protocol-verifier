@@ -32,4 +32,21 @@ describe("Echo Logic live rollback anchor revalidation",function(){
  it("rejects invalid trusted floor values introduced after startup",()=>{
   const writer=open();try{policyFloor=-1;assert.throws(()=>writer.apply(signed(1)),/Invalid trusted policy floor/)}finally{writer.release()}
  });
+ it("rejects a policy floor that decreases after a previously observed high-water mark",()=>{
+  const writer=open();try{
+   writer.apply(signed(1));
+   policyFloor=1;writer.fingerprints();
+   policyFloor=0;
+   assert.throws(()=>writer.apply(signed(2)),/Trusted rollback anchor floor decreased/);
+   assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"revocation-policy.json"),"utf8")).sequence,1);
+  }finally{writer.release()}
+ });
+ it("rejects an epoch floor that decreases during the same writer session",()=>{
+  const writer=open();try{
+   epochFloor=0;writer.fingerprints();
+   epochFloor=1;
+   assert.throws(()=>writer.fingerprints(),/Fencing epoch rollback detected/);
+  }finally{writer.release()}
+ });
+
 });
