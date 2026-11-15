@@ -49,4 +49,29 @@ describe("Echo Logic live rollback anchor revalidation",function(){
   }finally{writer.release()}
  });
 
+ it("rejects a decreasing epoch floor after a valid nonzero floor is observed",()=>{
+  // Persist a fencing epoch so an epoch floor of one is valid.
+  const first=open();try{first.apply(signed(1))}finally{first.release()}
+  const writer=open();try{
+   epochFloor=1;writer.fingerprints();
+   epochFloor=0;
+   assert.throws(()=>writer.fingerprints(),/Trusted rollback anchor floor decreased/);
+  }finally{writer.release()}
+ });
+ it("rejects an invalid epoch floor introduced after startup",()=>{
+  const writer=open();try{
+   epochFloor=Number.NaN;
+   assert.throws(()=>writer.apply(signed(1)),/Invalid trusted epoch floor/);
+  }finally{writer.release()}
+ });
+ it("does not accept anchor-provider regression after a failed high-floor check",()=>{
+  const writer=open();try{
+   writer.apply(signed(1));
+   policyFloor=3;
+   assert.throws(()=>writer.fingerprints(),/Signed policy rollback detected/);
+   policyFloor=0;
+   assert.throws(()=>writer.apply(signed(2)),/Trusted rollback anchor floor decreased/);
+  }finally{writer.release()}
+ });
+
 });
