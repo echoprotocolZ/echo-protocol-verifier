@@ -243,11 +243,30 @@ async function main(){
   for(const [label,adminData] of adminCases){
    let timer;
    try{
-    await Promise.race([
+    const response=await Promise.race([
      provider.call({from:ownerAddress,to:cp.account,data:adminData,gasLimit:3000000n}),
      new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("TIMEOUT: "+label)),30000)})
     ]);
-    throw Error("CRITICAL: "+label+" unexpectedly succeeded");
+    console.log("CRITICAL DIAGNOSTIC: "+label+" eth_call succeeded; return data:",response);
+    // Confirm whether the deployed implementation mutates ownership on a
+    // disposable fork. Never broadcast this probe to the real Amoy network.
+    const adminSnapshot=await network.provider.send("evm_snapshot",[]);
+    try{
+     await network.provider.send("anvil_impersonateAccount",[ownerAddress]);
+     await network.provider.send("anvil_setBalance",[ownerAddress,ethers.toBeHex(ethers.parseEther("1"))]);
+     const adminSigner=await provider.getSigner(ownerAddress);
+     const adminTx=await adminSigner.sendTransaction({to:cp.account,data:adminData,gasLimit:3000000n});
+     const adminReceipt=await adminTx.wait();
+     const newOwner=await readAdmin("owner");
+     const newPending=pending0===null?null:await readAdmin("pendingOwner");
+     console.log("CRITICAL DIAGNOSTIC: fork-only administration transaction status:",adminReceipt?.status,"owner changed:",newOwner!==owner0,"pendingOwner changed:",pending0===null?"unobservable":newPending!==pending0);
+    }catch(probeError){
+     console.log("CRITICAL DIAGNOSTIC: fork-only administration transaction reverted or failed:",probeError.shortMessage||probeError.message);
+    }finally{
+     await network.provider.send("anvil_stopImpersonatingAccount",[ownerAddress]);
+     if(!(await network.provider.send("evm_revert",[adminSnapshot])))throw Error("CRITICAL: failed to restore fork after administration probe");
+    }
+    throw Error("CRITICAL: "+label+" unexpectedly succeeded; deployed account requires investigation");
    }catch(e){
     if(String(e.message).includes("TIMEOUT:")||String(e.message).includes("CRITICAL:"))throw e;
     if(!(e.code==="CALL_EXCEPTION"||/execution reverted|revert/i.test(e.shortMessage||e.message||"")))throw e;
