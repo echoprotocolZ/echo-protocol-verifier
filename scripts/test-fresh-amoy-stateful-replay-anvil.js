@@ -82,6 +82,19 @@ async function main(){
  if(!targetGetter)throw Error("LAUNCH READINESS BLOCKED: no verified uint256 getter on TestTarget; inspect its ABI before asserting application state");
  const targetGetterName=targetGetter.fragments[0].name;
  console.log("DIAGNOSTIC: target state getter",targetGetterName,"before",targetBefore.toString());
+ // On the disposable fork only, seed a distinct target value so the real
+ // proof-authorized setValue(888) must demonstrate an observable transition.
+ // This does not alter the signed checkpoint or proof-bound calldata.
+ const seedValue=887n;
+ const seedData=new ethers.Interface(["function setValue(uint256)"]).encodeFunctionData("setValue",[seedValue]);
+ const seedTx=await signer.sendTransaction({to:target,data:seedData,gasLimit:300000n});
+ const seedReceipt=await seedTx.wait();
+ if(!seedReceipt||seedReceipt.status!==1)throw Error("LAUNCH READINESS BLOCKED: could not seed disposable target state");
+ const seededRaw=await provider.call({to:target,data:targetGetter.encodeFunctionData(targetGetterName)});
+ const seededValue=BigInt(targetGetter.decodeFunctionResult(targetGetterName,seededRaw)[0]);
+ if(seededValue!==seedValue)throw Error("LAUNCH READINESS BLOCKED: target getter does not reflect setValue(887); inspect target ABI");
+ targetBefore=seededValue;
+ console.log("PASS fork-only target precondition seeded to",seededValue.toString());
  const snapshot=await network.provider.send("evm_snapshot",[]);
  try{
   const tx=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
