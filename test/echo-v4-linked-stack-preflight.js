@@ -76,4 +76,32 @@ describe("Echo V4 linked-stack execution preflight",function(){
   await assert.rejects(async()=>{await(account.setEntryPoint(outsider.address)).wait()});
   assert.equal(await account.entryPoint(),ethers.ZeroAddress);
  });
+
+ it("rejects targeting the checkpoint registry without advancing nonce",async()=>{
+  await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),registry.target)).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects targeting the dual-proof verifier without advancing nonce",async()=>{
+  const dual=await bridge.dualProofVerifier();
+  await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),dual)).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects targeting the geographic gateway without advancing nonce",async()=>{
+  const dual=await ethers.getContractAt("EchoDualProofVerifierV4",await bridge.dualProofVerifier());
+  const gateway=await dual.v4Gateway();
+  await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),gateway)).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects targeting the geographic policy registry without advancing nonce",async()=>{
+  await assert.rejects(async()=>{await(attempt(blankCheckpoint(account.target),policy.target)).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects proof-free administrative execution without advancing nonce",async()=>{
+  await assert.rejects(async()=>{await(account.executeAdministration(registry.target,"0x")).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
+ it("rejects proof-free geographic administration without advancing nonce",async()=>{
+  await assert.rejects(async()=>{await(account.executeGeographicAdministration("0x")).wait()});
+  assert.equal(await account.nonce(),0n);
+ });
 });
