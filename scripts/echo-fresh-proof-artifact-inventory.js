@@ -7,7 +7,7 @@ const root=path.resolve(__dirname,"..");
 const roots=["circuits","scripts","build/v3-timestamp-fixed","build/v4-geographic-bound","test","docs"];
 const selected=/\.circom$|\.wasm$|\.zkey$|verification_key\.json$|\.r1cs$|\.sym$|\.js$|\.json$/i;
 const relevant=/v3|v4|geo|timestamp|proof|witness|checkpoint|authorization|bound|amoy|signal|input/i;
-const ignore=/node_modules|\.backup|backup-|\.git/|\.env|secret|private|mnemonic|seed/i;
+const ignore=/node_modules|\.backup|backup-|\.git(?:\/|$)|\.env|secret|private|mnemonic|seed/i;
 function walk(dir,depth,out){
  if(depth>5||!fs.existsSync(dir))return;
  for(const ent of fs.readdirSync(dir,{withFileTypes:true})){
