@@ -28,6 +28,8 @@ async function main() {
   );
   const cases = [
     ["valid-boundary", valid, true],
+    ["valid-exact-lower-bound", {...valid, checkpointLat: valid.minLat, checkpointLon: valid.minLon, expectedCheckpointCommitment: hash(valid.minLat, valid.minLon, valid.checkpointTimestamp)}, true],
+    ["valid-exact-upper-bound", {...valid, checkpointLat: valid.maxLat, checkpointLon: valid.maxLon, expectedCheckpointCommitment: hash(valid.maxLat, valid.maxLon, valid.checkpointTimestamp)}, true],
     ["outside-latitude", {...valid, checkpointLat: "101001"}, false],
     ["outside-longitude", {...valid, checkpointLon: "201001"}, false],
     ["wrong-commitment", {...valid, expectedCheckpointCommitment: "0"}, false],
