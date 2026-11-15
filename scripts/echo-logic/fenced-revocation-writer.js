@@ -18,9 +18,14 @@ function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnc
    throw Error("Independent rollback anchors required");
   assertRollbackAnchors({directory,publicKey,clock,policyFloor:rollbackAnchors.policyFloor,epochFloor:rollbackAnchors.epochFloor});
  }
+ const checkAnchors=()=>{
+  if(rollbackAnchors!==undefined)
+   assertRollbackAnchors({directory,publicKey,clock,policyFloor:rollbackAnchors.policyFloor,epochFloor:rollbackAnchors.epochFloor});
+ };
  // Acquire the local lock first; a failed fence acquisition must release it.
  let epoch;
  const authorizeCommit=()=>{
+  checkAnchors();
   if(epoch===undefined||fence.assertCurrent(epoch)!==true)throw Error("Fenced writer epoch revoked");
  };
  const writer=openExclusiveRevocationWriter(publicKey,directory,{clock,authorizeCommit,requireCommitAuthorization:true});
@@ -32,6 +37,7 @@ function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnc
  let closed=false;
  function check(){
   if(closed)throw Error("Fenced writer released");
+  checkAnchors();
   if(fence.assertCurrent(epoch)!==true)throw Error("Fenced writer epoch revoked");
  }
  return {
