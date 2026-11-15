@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 "use strict";
-// Offline proof verification with explicit matching rules; never mixes artifacts
-// across circuits or backup directories. No witness/private data is printed.
+// Read-only, offline Groth16 verification of candidate proof/public pairs.
+// Candidate keys are tested independently, never inferred from a V3/V4 label.
+// This does not authorize transactions or demonstrate production compatibility.
 const fs=require("node:fs");
 const path=require("node:path");
 const snarkjs=require("snarkjs");
@@ -13,68 +14,80 @@ function walk(dir,depth=0,out=[]){
  for(const e of fs.readdirSync(dir,{withFileTypes:true})){
   if(e.isSymbolicLink())continue;
   const p=path.join(dir,e.name);
-  if(e.isDirectory()){if(!skip.has(e.name)&&!e.name.includes(".backup"))walk(p,depth+1,out);}
-  else if(e.isFile()&&e.name.endsWith(".json"))out.push(p);
+  if(e.isDirectory()){
+   if(!skip.has(e.name)&&!e.name.includes(".backup"))walk(p,depth+1,out);
+  }else if(e.isFile()&&e.name.endsWith(".json"))out.push(p);
  }
  return out;
 }
 const all=walk(path.join(root,"build"));
-function scope(p){
- const s=rel(p).toLowerCase();
- if(s.startsWith("build/v4-geographic-bound/"))return "V4-geographic-bound";
- if(s.startsWith("build/v4-geographic/"))return "V4-geographic";
- if(s.startsWith("build/v3/")||s.startsWith("build/v3-"))return "V3";
- if(s.startsWith("build/"))return "V3-root";
- return "unknown";
+const pairs=all.filter(p=>/-proof\.json$/i.test(path.basename(p)))
+ .filter(p=>!/tamper|invalid|negative|bad/i.test(path.basename(p)))
+ .map(proof=>{
+  const pub=proof.replace(/-proof\.json$/i,"-public.json");
+  return {proof,pub};
+ }).filter(x=>fs.existsSync(x.pub));
+function keyCandidates(proof){
+ const dir=path.dirname(proof),parent=path.dirname(dir);
+ const dirs=[dir,path.join(parent,"setup"),parent];
+ // Only a key within the same circuit subtree, never an unrelated root key.
+ if(parent===path.join(root,"build"))dirs.push(parent);
+ return [...new Set(dirs.map(d=>path.join(d,"verification_key.json")))]
+  .filter(fs.existsSync);
 }
-const groups=new Map();
-for(const proof of all.filter(p=>/-proof\.json$/i.test(path.basename(p)))){
- const base=path.basename(proof).replace(/-proof\.json$/i,"");
- if(/tamper|invalid|negative|bad/i.test(base))continue;
- const pub=path.join(path.dirname(proof),base+"-public.json");
- if(!fs.existsSync(pub))continue;
- const id=scope(proof),key=id+"|"+path.dirname(proof);
- if(!groups.has(key))groups.set(key,[]);
- groups.get(key).push({proof,pub,id});
-}
-function keysFor(item){
- const dir=path.dirname(item.proof),parent=path.dirname(dir);
- const locations=[dir,path.join(parent,"setup"),parent];
- if(item.id==="V3-root")locations.push(path.join(root,"build"));
- if(item.id==="V4-geographic")locations.push(path.join(root,"build/v4-geographic/setup"));
- if(item.id==="V4-geographic-bound")locations.push(path.join(root,"build/v4-geographic-bound/setup"));
- return [...new Set(locations.map(d=>path.join(d,"verification_key.json")))].filter(fs.existsSync);
-}
+function load(p){return JSON.parse(fs.readFileSync(p,"utf8"));}
 async function run(){
- let valid=0,invalid=0,blocked=0;
- console.log("Echo Protocol Z — matched offline Groth16 verification");
- for(const [,items] of groups){
-  for(const item of items){
-   console.log("\nPAIR "+rel(item.proof)+" + "+rel(item.pub));
-   const keys=keysFor(item);
-   if(keys.length!==1){
-    console.log(" BLOCKED: expected exactly one unambiguous verification key; found "+keys.length);
-    for(const k of keys)console.log(" KEY CANDIDATE "+rel(k));
-    blocked++;continue;
-   }
+ let verifiedPairs=0,failedPairs=0,blockedPairs=0;
+ console.log("Echo Protocol Z — independent proof/key matching");
+ for(const {proof,pub} of pairs){
+  console.log("\nPAIR "+rel(proof)+" + "+rel(pub));
+  let signals;
+  try{
+   signals=load(pub);
+   if(!Array.isArray(signals))throw Error("public signals are not an array");
+  }catch(e){console.log(" BLOCKED public signals: "+e.message);blockedPairs++;continue;}
+  console.log(" Public signals: "+signals.length);
+  const keys=keyCandidates(proof);
+  if(!keys.length){console.log(" BLOCKED: no same-circuit verification key found");blockedPairs++;continue;}
+  let compatible=0,passed=0,attempted=0;
+  for(const k of keys){
    try{
-    const key=JSON.parse(fs.readFileSync(keys[0],"utf8"));
-    const proof=JSON.parse(fs.readFileSync(item.proof,"utf8"));
-    const pub=JSON.parse(fs.readFileSync(item.pub,"utf8"));
-    if(!Array.isArray(pub))throw Error("public signals must be an array");
-    if(pub.length!==(item.id.startsWith("V4")?5:20))
-      throw Error("unexpected signal count "+pub.length);
-    const ok=await snarkjs.groth16.verify(key,pub,proof);
-    console.log(" KEY "+rel(keys[0]));
-    console.log(" "+(ok?"VALID":"INVALID")+" ("+item.id+")");
-    if(ok)valid++;else invalid++;
-   }catch(e){console.log(" BLOCKED: "+e.message);blocked++;}
+    const vk=load(k);
+    const expected=Number(vk.nPublic);
+    if(!Number.isSafeInteger(expected)||expected<0){
+     console.log(" KEY "+rel(k)+": BLOCKED (missing/invalid nPublic)");continue;
+    }
+    if(expected!==signals.length){
+     console.log(" KEY "+rel(k)+": SKIPPED (nPublic="+expected+")");continue;
+    }
+    compatible++;
+    const candidate=load(proof);
+    attempted++;
+    const valid=await snarkjs.groth16.verify(vk,signals,candidate);
+    console.log(" KEY "+rel(k)+": "+(valid?"VALID":"INVALID"));
+    if(valid)passed++;
+   }catch(e){
+    console.log(" KEY "+rel(k)+": ERROR ("+e.message+")");
+   }
+  }
+  if(passed===1){
+   console.log(" PAIR RESULT: VERIFIED with exactly one matching key");
+   verifiedPairs++;
+  }else if(passed>1){
+   console.log(" PAIR RESULT: BLOCKED — multiple valid keys; provenance unresolved");
+   blockedPairs++;
+  }else if(!compatible||!attempted){
+   console.log(" PAIR RESULT: BLOCKED — no successfully evaluated compatible key");
+   blockedPairs++;
+  }else{
+   console.log(" PAIR RESULT: NOT VERIFIED");
+   failedPairs++;
   }
  }
- if(!groups.size)console.log("No matching *-proof.json / *-public.json pairs found.");
- console.log("\nSUMMARY: "+valid+" valid, "+invalid+" invalid, "+blocked+" blocked");
- console.log("No result here establishes matching V3/V4 checkpoint commitments,");
- console.log("signatures, account policy, on-chain verification, or execution.");
- if(!valid||invalid||blocked)process.exitCode=1;
+ if(!pairs.length)console.log("No matching *-proof.json and *-public.json pairs found.");
+ console.log("\nSUMMARY: "+verifiedPairs+" verified pairs, "+failedPairs+" unverified, "+blockedPairs+" blocked");
+ console.log("Circuit version, checkpoint linkage, validator signature, on-chain");
+ console.log("verifier identity, geographic policy and execution remain unproven.");
+ if(!verifiedPairs||failedPairs||blockedPairs)process.exitCode=1;
 }
-run().catch(e=>{console.error(e.message);process.exitCode=1;});
+run().catch(e=>{console.error(e.stack||e.message);process.exitCode=1;});
