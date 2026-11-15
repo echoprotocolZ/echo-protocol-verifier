@@ -45,6 +45,10 @@ async function main() {
   console.log("On-chain nonce:", nonce.toString());
   console.log("V3 input nonce:", input.nonce);
   console.log("Signed checkpoint nonce:", checkpoint.nonce);
+  console.log("V3 input account:", hre.ethers.getAddress(hre.ethers.toBeHex(BigInt(input.account), 20)));
+  console.log("Signed checkpoint account:", checkpoint.account);
+  console.log("Checkpoint timestamp:", checkpoint.timestamp);
+  console.log("Checkpoint delegatee:", checkpoint.delegatee);
   console.log("Amoy block timestamp:", block.timestamp);
   console.log("Authorization deadline:", input.deadline);
   console.log("Checks:", errors.length ? "BLOCKED" : "PASS");
