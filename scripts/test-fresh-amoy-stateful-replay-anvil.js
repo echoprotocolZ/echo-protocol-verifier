@@ -67,7 +67,21 @@ async function main(){
  const signer=await provider.getSigner(cp.delegatee);
  // Launch-readiness acceptance: inspect the target contract's observable
  // storage before and after the genuine authorized execution.
- const targetSlot0Before=await provider.send("eth_getStorageAt",[target,"0x0","latest"]);
+ const targetGetters=["value()","storedValue()","getValue()","number()"];
+ let targetGetter=null,targetBefore=null;
+ for(const signature of targetGetters){
+  const probeIface=new ethers.Interface(["function "+signature+" view returns (uint256)"]);
+  const fn=signature.split("(")[0];
+  try{
+   const result=await provider.call({to:target,data:probeIface.encodeFunctionData(fn)});
+   if(result==="0x")continue;
+   const decoded=probeIface.decodeFunctionResult(fn,result);
+   targetGetter=probeIface;targetBefore=BigInt(decoded[0]);break;
+  }catch{}
+ }
+ if(!targetGetter)throw Error("LAUNCH READINESS BLOCKED: no verified uint256 getter on TestTarget; inspect its ABI before asserting application state");
+ const targetGetterName=targetGetter.fragments[0].name;
+ console.log("DIAGNOSTIC: target state getter",targetGetterName,"before",targetBefore.toString());
  const snapshot=await network.provider.send("evm_snapshot",[]);
  try{
   const tx=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
@@ -75,9 +89,10 @@ async function main(){
   if(!receipt||receipt.status!==1)throw Error("Fork transaction did not succeed");
   const nonce1=await account.nonce(),used1=await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce),null1=await bridge.consumedNullifiers(v3[2]);
   if(nonce1!==nonce0+1n||!used1||!null1)throw Error("Post-execution nonce/checkpoint/nullifier invariant failed");
-  const targetSlot0After=await provider.send("eth_getStorageAt",[target,"0x0","latest"]);
-  if(BigInt(targetSlot0After)!==888n||BigInt(targetSlot0Before)===888n)
-   throw Error("LAUNCH READINESS BLOCKED: target slot 0 did not change to expected value 888; inspect target storage layout");
+  const targetAfterRaw=await provider.call({to:target,data:targetGetter.encodeFunctionData(targetGetterName)});
+  const targetAfter=BigInt(targetGetter.decodeFunctionResult(targetGetterName,targetAfterRaw)[0]);
+  if(targetAfter!==888n||targetBefore===888n)
+   throw Error("LAUNCH READINESS BLOCKED: target getter "+targetGetterName+" returned "+targetAfter+" after execution (before "+targetBefore+"); expected transition to 888");
   console.log("PASS end-to-end target contract state changed to 888");
   console.log("PASS genuine proof-backed fork transaction succeeded");
   console.log("PASS nonce advanced exactly once");
