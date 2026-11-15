@@ -40,7 +40,10 @@ async function main(){
  const v4=await snarkjs.groth16.fullProve(v4input,v4wasm,v4zkey);
  if(!(await snarkjs.groth16.verify(await snarkjs.zKey.exportVerificationKey(v4zkey),v4.publicSignals,v4.proof)))throw Error("V4 local verification failed");
  if(v4.publicSignals.length!==5||BigInt(v4.publicSignals[4])!==commitment)throw Error("V4 commitment mismatch");
- for(let i=0;i<4;i++)if(BigInt(v4.publicSignals[i])!==bounds[i])throw Error("V4 geographic policy bounds changed");
+ console.log("Existing approved-zone public signals:",bounds.map(String).join(", "));
+ console.log("Fresh V4 public signals:",v4.publicSignals.map(String).join(", "));
+ console.log("V4 input geographic bounds:",[minLat,maxLat,minLon,maxLon].map(String).join(", "));
+ for(let i=0;i<4;i++)if(BigInt(v4.publicSignals[i])!==bounds[i])throw Error("V4 public signal mismatch at index "+i+": expected "+bounds[i]+" got "+v4.publicSignals[i]+"; no policy changes made");
  const deadline=timestamp+7200n,minTimestamp=timestamp-3600n,maxTimestamp=timestamp+3600n;
  const fragmentPayload=BigInt(template.fragmentPayload),fragmentSalt=BigInt(template.fragmentSalt);
  const targetX=BigInt(compatible.targetX),targetY=BigInt(compatible.targetY),maxDistanceSq=BigInt(compatible.maxDistanceSq);
