@@ -24,7 +24,7 @@ describe("Echo Logic live rollback anchor revalidation",function(){
   const writer=open();try{writer.apply(signed(1));policyFloor=2;assert.throws(()=>writer.apply(signed(2)),/Signed policy rollback detected/);assert.equal(JSON.parse(fs.readFileSync(path.join(dir,"revocation-policy.json"),"utf8")).sequence,1)}finally{writer.release()}
  });
  it("rejects reads after trusted epoch floor advances beyond local state",()=>{
-  const writer=open();try{epochFloor=1;assert.throws(()=>writer.fingerprints(),/Fencing epoch rollback detected/)}finally{writer.release()}
+  const writer=open();try{writer.apply(signed(1));epochFloor=1;assert.throws(()=>writer.fingerprints(),/Fencing epoch rollback detected/)}finally{writer.release()}
  });
  it("rejects writes after a previously valid policy file is removed",()=>{
   const writer=open();try{writer.apply(signed(1));policyFloor=1;fs.unlinkSync(path.join(dir,"revocation-policy.json"));assert.throws(()=>writer.apply(signed(2)),/Signed policy rollback detected/)}finally{writer.release()}
@@ -43,16 +43,17 @@ describe("Echo Logic live rollback anchor revalidation",function(){
  });
  it("rejects an epoch floor that decreases during the same writer session",()=>{
   const writer=open();try{
-   epochFloor=0;writer.fingerprints();
+   writer.apply(signed(1));
    epochFloor=1;
    assert.throws(()=>writer.fingerprints(),/Fencing epoch rollback detected/);
   }finally{writer.release()}
  });
 
  it("rejects a decreasing epoch floor after a valid nonzero floor is observed",()=>{
-  // Persist a fencing epoch so an epoch floor of one is valid.
-  const first=open();try{first.apply(signed(1))}finally{first.release()}
+  // The external coordinator is responsible for persisting its epoch.
+  fs.writeFileSync(path.join(dir,"fencing-epoch.json"),JSON.stringify({version:1,epoch:1}));
   const writer=open();try{
+   writer.apply(signed(1));
    epochFloor=1;writer.fingerprints();
    epochFloor=0;
    assert.throws(()=>writer.fingerprints(),/Trusted rollback anchor floor decreased/);
