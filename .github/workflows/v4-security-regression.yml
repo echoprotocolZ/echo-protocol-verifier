@@ -40,6 +40,13 @@ jobs:
       - run: npx hardhat compile
       - name: Generate V3 circuit metadata for public-signal tests
         run: node scripts/build-v3-test-artifacts.js
+      - name: Audit artifact-independent test selection
+        run: python3 scripts/audit-artifact-independent-coverage.py
+      - name: Upload test selection inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-independent-coverage
+          path: artifact-independent-coverage.json
       - name: Run tests without external proving keys
         shell: bash
         run: |
