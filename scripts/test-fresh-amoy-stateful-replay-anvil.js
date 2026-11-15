@@ -168,6 +168,55 @@ async function main(){
    throw Error("CRITICAL: corrupted validator signature changed authorization state");
   console.log("PASS corrupted validator signature rejected");
   console.log("PASS signature rejection left authorization state unchanged");
+  // Deployed-account administration lockdown, checked against the actual forked
+  // bytecode. eth_call does not persist changes; check all relevant state.
+  const admin=new ethers.Interface([
+   "function owner() view returns (address)",
+   "function pendingOwner() view returns (address)",
+   "function entryPoint() view returns (address)",
+   "function transferOwnership(address)",
+   "function acceptOwnership()",
+   "function setEntryPoint(address)",
+   "function executeAdministration(address,bytes)",
+   "function executeGeographicAdministration(bytes)"
+  ]);
+  const owner0=await provider.call({to:cp.account,data:admin.encodeFunctionData("owner")});
+  const pending0=await provider.call({to:cp.account,data:admin.encodeFunctionData("pendingOwner")});
+  const entry0=await provider.call({to:cp.account,data:admin.encodeFunctionData("entryPoint")});
+  const ownerAddress=admin.decodeFunctionResult("owner",owner0)[0];
+  const candidate=ethers.Wallet.createRandom().address;
+  const adminCases=[
+   ["ownership transfer",admin.encodeFunctionData("transferOwnership",[candidate])],
+   ["ownership acceptance",admin.encodeFunctionData("acceptOwnership")],
+   ["entry point update",admin.encodeFunctionData("setEntryPoint",[candidate])],
+   ["general administration",admin.encodeFunctionData("executeAdministration",[target,"0x"])],
+   ["geographic administration",admin.encodeFunctionData("executeGeographicAdministration",["0x"])]
+  ];
+  console.log("DIAGNOSTIC: checking deployed account administration lockdown");
+  for(const [label,adminData] of adminCases){
+   // The owner is the strongest caller to test: even owner privileges must
+   // not bypass the proof-bound administration lockdown.
+   let timer;
+   try{
+    await Promise.race([
+     provider.call({from:ownerAddress,to:cp.account,data:adminData,gasLimit:3000000n}),
+     new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("TIMEOUT: "+label)),30000)})
+    ]);
+    throw Error("CRITICAL: "+label+" unexpectedly succeeded");
+   }catch(e){
+    if(String(e.message).includes("TIMEOUT:")||String(e.message).includes("CRITICAL:"))throw e;
+    if(!(e.code==="CALL_EXCEPTION"||/execution reverted|revert/i.test(e.shortMessage||e.message||"")))throw e;
+   }finally{clearTimeout(timer)}
+   console.log("PASS owner-initiated "+label+" rejected");
+  }
+  if(await provider.call({to:cp.account,data:admin.encodeFunctionData("owner")})!==owner0||
+     await provider.call({to:cp.account,data:admin.encodeFunctionData("pendingOwner")})!==pending0||
+     await provider.call({to:cp.account,data:admin.encodeFunctionData("entryPoint")})!==entry0||
+     await account.nonce()!==nonce0||
+     await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
+     await bridge.consumedNullifiers(v3[2])!==null0)
+   throw Error("CRITICAL: administration lockdown changed account or authorization state");
+  console.log("PASS deployed administration lockdown preserved ownership and authorization state");
   console.log("DIAGNOSTIC: beginning tampered transaction test");
   const tamperSnapshot=await network.provider.send("evm_snapshot",[]);
   try{
@@ -203,6 +252,7 @@ async function main(){
  console.log("TRANSACTION TAMPERING TEST PASSED on disposable local fork");
  console.log("GEOGRAPHIC CHECKPOINT TAMPERING TEST PASSED on disposable local fork");
  console.log("VALIDATOR SIGNATURE TAMPERING TEST PASSED on disposable local fork");
+ console.log("ADMINISTRATION LOCKDOWN TEST PASSED on disposable local fork");
  console.log("Live transaction broadcast: NO; live POL spent: 0");
  }finally{anvil.kill("SIGTERM");provider.destroy();}
 }
