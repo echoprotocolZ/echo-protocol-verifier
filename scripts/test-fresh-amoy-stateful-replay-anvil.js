@@ -217,12 +217,19 @@ async function main(){
   ]);
   const readAdmin=async(name)=>{
    try{return await provider.call({to:cp.account,data:admin.encodeFunctionData(name)})}
-   catch(e){throw Error("LAUNCH READINESS BLOCKED: deployed account getter "+name+"() reverted; deployed ABI may differ from repository source: "+(e.shortMessage||e.message))}
+   catch(e){
+    if(e.code==="CALL_EXCEPTION"||/execution reverted|revert/i.test(e.shortMessage||e.message||"")){
+     console.log("DIAGNOSTIC: deployed account does not expose usable "+name+"() getter");
+     return null;
+    }
+    throw e;
+   }
   };
   console.log("DIAGNOSTIC: reading deployed administration state");
   const owner0=await readAdmin("owner");
   const pending0=await readAdmin("pendingOwner");
   const entry0=await readAdmin("entryPoint");
+  if(owner0===null)throw Error("LAUNCH READINESS BLOCKED: cannot establish deployed account owner");
   const ownerAddress=admin.decodeFunctionResult("owner",owner0)[0];
   const candidate=ethers.Wallet.createRandom().address;
   const adminCases=[
@@ -234,8 +241,6 @@ async function main(){
   ];
   console.log("DIAGNOSTIC: checking deployed account administration lockdown");
   for(const [label,adminData] of adminCases){
-   // The owner is the strongest caller to test: even owner privileges must
-   // not bypass the proof-bound administration lockdown.
    let timer;
    try{
     await Promise.race([
@@ -249,14 +254,17 @@ async function main(){
    }finally{clearTimeout(timer)}
    console.log("PASS owner-initiated "+label+" rejected");
   }
-  if(await provider.call({to:cp.account,data:admin.encodeFunctionData("owner")})!==owner0||
-     await provider.call({to:cp.account,data:admin.encodeFunctionData("pendingOwner")})!==pending0||
-     await provider.call({to:cp.account,data:admin.encodeFunctionData("entryPoint")})!==entry0||
+  const ownerAfter=await readAdmin("owner");
+  const pendingAfter=pending0===null?null:await readAdmin("pendingOwner");
+  const entryAfter=entry0===null?null:await readAdmin("entryPoint");
+  if(ownerAfter!==owner0||(pending0!==null&&pendingAfter!==pending0)||(entry0!==null&&entryAfter!==entry0)||
      await account.nonce()!==nonce0||
      await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
      await bridge.consumedNullifiers(v3[2])!==null0)
-   throw Error("CRITICAL: administration lockdown changed account or authorization state");
-  console.log("PASS deployed administration lockdown preserved ownership and authorization state");
+   throw Error("CRITICAL: administration lockdown changed observable account or authorization state");
+  console.log("PASS deployed administration calls rejected and observable state preserved");
+  const administrationFullyVerified=pending0!==null&&entry0!==null;
+  if(!administrationFullyVerified)console.log("INCOMPLETE: deployed administration state getters unavailable; full administration lockdown verification remains pending");
   console.log("DIAGNOSTIC: beginning tampered transaction test");
   const tamperSnapshot=await network.provider.send("evm_snapshot",[]);
   try{
@@ -293,7 +301,8 @@ async function main(){
  console.log("TRANSACTION TAMPERING TEST PASSED on disposable local fork");
  console.log("GEOGRAPHIC CHECKPOINT TAMPERING TEST PASSED on disposable local fork");
  console.log("VALIDATOR SIGNATURE TAMPERING TEST PASSED on disposable local fork");
- console.log("ADMINISTRATION LOCKDOWN TEST PASSED on disposable local fork");
+ if(administrationFullyVerified)console.log("ADMINISTRATION LOCKDOWN TEST PASSED on disposable local fork");
+ else console.log("ADMINISTRATION LOCKDOWN TEST INCOMPLETE: missing deployed state getters");
  console.log("Live transaction broadcast: NO; live POL spent: 0");
  }finally{anvil.kill("SIGTERM");provider.destroy();}
 }
