@@ -5,8 +5,20 @@ const fs=require("node:fs"),hre=require("hardhat");
 const {loadRecords}=require("./amoy-deployment-records");
 async function main(){
  if(hre.network.name!=="amoy")throw Error("Run with --network amoy");
- const {ethers}=hre,provider=ethers.provider;
- if((await provider.getNetwork()).chainId!==80002n)throw Error("Wrong chain");
+ const {ethers}=hre;
+ const urls=[process.env.AMOY_RPC_URL,"https://polygon-amoy-bor-rpc.publicnode.com","https://rpc-amoy.polygon.technology","https://polygon-amoy.drpc.org"].filter(Boolean);
+ let provider=null;
+ for(const url of [...new Set(urls)]){
+  try{
+   const candidate=new ethers.JsonRpcProvider(url,80002,{batchMaxCount:1,staticNetwork:true});
+   const chain=await Promise.race([candidate.send("eth_chainId",[]),new Promise((_,reject)=>setTimeout(()=>reject(Error("RPC probe timeout")),7000))]);
+   if(BigInt(chain)!==80002n)throw Error("Wrong chain");
+   provider=candidate;
+   console.log("RPC connected:",new URL(url).host);
+   break;
+  }catch(e){console.log("RPC unavailable:",new URL(url).host,e.shortMessage||e.message);}
+ }
+ if(!provider)throw Error("All Amoy RPC endpoints unavailable");
  const r=loadRecords().contracts,dir="build/v4-geographic-bound/proofs/";
  const signed=JSON.parse(fs.readFileSync(dir+"v4-signed-checkpoint-original-account.json","utf8"));
  const v3=JSON.parse(fs.readFileSync(dir+"v3-amoy-matching-public.json","utf8"));
