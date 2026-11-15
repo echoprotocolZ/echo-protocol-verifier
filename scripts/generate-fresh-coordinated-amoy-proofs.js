@@ -43,7 +43,7 @@ async function main(){
  console.log("Existing approved-zone public signals:",bounds.map(String).join(", "));
  console.log("Fresh V4 public signals:",v4.publicSignals.map(String).join(", "));
  console.log("V4 input geographic bounds:",[minLat,maxLat,minLon,maxLon].map(String).join(", "));
- for(let i=0;i<4;i++)if(BigInt(v4.publicSignals[i])!==bounds[i])throw Error("V4 public signal mismatch at index "+i+": expected "+bounds[i]+" got "+v4.publicSignals[i]+"; no policy changes made");
+ for(let i=0;i<4;i++)if(BigInt(v4.publicSignals[i])!==BigInt(bounds[i]))throw Error("V4 public signal mismatch at index "+i+": expected "+bounds[i]+" got "+v4.publicSignals[i]+"; no policy changes made");
  const deadline=timestamp+7200n,minTimestamp=timestamp-3600n,maxTimestamp=timestamp+3600n;
  const fragmentPayload=BigInt(template.fragmentPayload),fragmentSalt=BigInt(template.fragmentSalt);
  const targetX=BigInt(compatible.targetX),targetY=BigInt(compatible.targetY),maxDistanceSq=BigInt(compatible.maxDistanceSq);
