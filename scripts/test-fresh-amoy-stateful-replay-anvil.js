@@ -67,6 +67,24 @@ async function main(){
  const signer=await provider.getSigner(cp.delegatee);
  const snapshot=await network.provider.send("evm_snapshot",[]);
  try{
+  const tx=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
+  const receipt=await tx.wait();
+  if(!receipt||receipt.status!==1)throw Error("Fork transaction did not succeed");
+  const nonce1=await account.nonce(),used1=await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce),null1=await bridge.consumedNullifiers(v3[2]);
+  if(nonce1!==nonce0+1n||!used1||!null1)throw Error("Post-execution nonce/checkpoint/nullifier invariant failed");
+  console.log("PASS genuine proof-backed fork transaction succeeded");
+  console.log("PASS nonce advanced exactly once");
+  console.log("PASS checkpoint nonce consumed");
+  console.log("PASS nullifier consumed");
+  let rejected=false;
+  try{const replay=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});const replayReceipt=await replay.wait();rejected=!replayReceipt||replayReceipt.status===0}
+  catch(e){rejected=true}
+  if(!rejected)throw Error("CRITICAL: Replay unexpectedly succeeded");
+  if(await account.nonce()!==nonce1||!(await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce))||!(await bridge.consumedNullifiers(v3[2])))throw Error("Replay changed consumption state");
+  console.log("PASS identical transaction replay rejected");
+  console.log("PASS replay left nonce and consumption state unchanged");
+  // Restore pristine authorization state before testing target failure independently.
+  if(!(await network.provider.send("evm_revert",[snapshot])))throw Error("Failed to restore baseline after replay test");
   // First establish that the exact genuine proof succeeds against the unmodified target.
   // eth_call does not persist nonce, checkpoint, or nullifier consumption.
   await provider.call({from:cp.delegatee,to:cp.account,data:calldata,gasLimit:12000000n});
@@ -105,24 +123,8 @@ async function main(){
      await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
      await bridge.consumedNullifiers(v3[2])!==null0)
    throw Error("Authorization state not restored before positive test");
-  const tx=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});
-  const receipt=await tx.wait();
-  if(!receipt||receipt.status!==1)throw Error("Fork transaction did not succeed");
-  const nonce1=await account.nonce(),used1=await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce),null1=await bridge.consumedNullifiers(v3[2]);
-  if(nonce1!==nonce0+1n||!used1||!null1)throw Error("Post-execution nonce/checkpoint/nullifier invariant failed");
-  console.log("PASS genuine proof-backed fork transaction succeeded");
-  console.log("PASS nonce advanced exactly once");
-  console.log("PASS checkpoint nonce consumed");
-  console.log("PASS nullifier consumed");
-  let rejected=false;
-  try{const replay=await signer.sendTransaction({to:cp.account,data:calldata,gasLimit:12000000n});const replayReceipt=await replay.wait();rejected=!replayReceipt||replayReceipt.status===0}
-  catch(e){rejected=true}
-  if(!rejected)throw Error("CRITICAL: Replay unexpectedly succeeded");
-  if(await account.nonce()!==nonce1||!(await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce))||!(await bridge.consumedNullifiers(v3[2])))throw Error("Replay changed consumption state");
-  console.log("PASS identical transaction replay rejected");
-  console.log("PASS replay left nonce and consumption state unchanged");
+
  }finally{
-  await network.provider.send("evm_revert",[snapshot]);
   await network.provider.send("anvil_stopImpersonatingAccount",[cp.delegatee]);
  }
  console.log("STATEFUL REPLAY TEST PASSED on disposable local fork");
