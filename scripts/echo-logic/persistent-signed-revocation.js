@@ -4,7 +4,8 @@ const fs=require("node:fs");
 const path=require("node:path");
 const crypto=require("node:crypto");
 const {SignedRevocationStore}=require("./signed-revocation-policy");
-function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now(),authorizeCommit}={}){
+function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now(),authorizeCommit,requireCommitAuthorization=false}={}){
+ if(requireCommitAuthorization&&typeof authorizeCommit!=="function")throw Error("Protected policy store requires commit authorization");
  if(authorizeCommit!==undefined&&typeof authorizeCommit!=="function")throw Error("Invalid commit authorization hook");
  if(!directory||typeof directory!=="string")throw Error("Policy directory required");
  fs.mkdirSync(directory,{recursive:true,mode:0o700});
