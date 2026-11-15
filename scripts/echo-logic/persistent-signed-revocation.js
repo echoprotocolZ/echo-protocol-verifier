@@ -10,6 +10,8 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
  const filename=path.join(directory,"revocation-policy.json");
  const store=new SignedRevocationStore(publicKey,{clock});
  let last=null;
+ let uncertain=false;
+ function ensureCertain(){if(uncertain)throw Error("Policy persistence uncertain; reopen store") }
  if(fs.existsSync(filename)){
   let record;
   try{record=JSON.parse(fs.readFileSync(filename,"utf8"))}catch{throw Error("Corrupted persisted policy")}
@@ -20,29 +22,31 @@ function openPersistentRevocationStore(publicKey,directory,{clock=()=>Date.now()
   }catch{throw Error("Invalid or expired persisted policy")}
  }
  function apply(signed){
+  ensureCertain();
   // Verify in a temporary store before touching disk or active state.
   const candidate=new SignedRevocationStore(publicKey,{clock});
   if(last)candidate.apply(last);
   candidate.apply(signed);
   const tmp=path.join(directory,".revocation-"+crypto.randomBytes(12).toString("hex")+".tmp");
-  let fd;
+  let fd,renamed=false;
   try{
    fd=fs.openSync(tmp,"wx",0o600);
    fs.writeFileSync(fd,JSON.stringify(signed));
    fs.fsyncSync(fd);
    fs.closeSync(fd);fd=undefined;
-   fs.renameSync(tmp,filename);
+   fs.renameSync(tmp,filename);renamed=true;
    const dirfd=fs.openSync(directory,"r");
    try{fs.fsyncSync(dirfd)}finally{fs.closeSync(dirfd)}
   }catch(e){
    if(fd!==undefined)fs.closeSync(fd);
    try{fs.unlinkSync(tmp)}catch{}
-   throw e;
+   if(renamed)uncertain=true;
+   throw Error((renamed?"Policy persistence uncertain; reopen store: ":"Policy persistence failed: ")+e.message);
   }
   // Disk commit happened before updating in-memory policy.
   store.apply(signed);last=signed;
   return store.current.sequence;
  }
- return {apply,fingerprints:()=>store.fingerprints(),get sequence(){return store.current?.sequence??0}};
+ return {apply,fingerprints:()=>{ensureCertain();return store.fingerprints()},get sequence(){ensureCertain();return store.current?.sequence??0}};
 }
 module.exports={openPersistentRevocationStore};
