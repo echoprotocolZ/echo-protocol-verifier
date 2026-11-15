@@ -6,7 +6,10 @@
  */
 const {openExclusiveRevocationWriter}=require("./exclusive-revocation-writer");
 const {assertRollbackAnchors}=require("./rollback-anchor-preflight");
-function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnchors}={}){
+function openFencedRevocationWriter(publicKey,directory,{fence,clock,rollbackAnchors,productionMode=false}={}){
+ if(typeof productionMode!=="boolean")throw Error("Invalid production mode");
+ if(productionMode&&(!rollbackAnchors||typeof rollbackAnchors.policyFloor!=="function"||typeof rollbackAnchors.epochFloor!=="function"))
+  throw Error("Production fenced writer requires independent rollback anchors");
  if(!fence||typeof fence.acquire!=="function"||typeof fence.assertCurrent!=="function")
   throw Error("External fencing coordinator required");
  // Optional independent high-water anchors: check BEFORE issuing a new epoch.
