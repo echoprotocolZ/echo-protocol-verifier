@@ -102,4 +102,41 @@ describe("Echo V4 transaction-binding invariants",function(){
   await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
  });
 
+ it("rejects checkpoint timestamp below the authorized time window",async()=>{
+  signals[16]=BigInt(checkpoint.timestamp+1);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects checkpoint public timestamp mismatch",async()=>{
+  signals[19]=BigInt(checkpoint.timestamp+1);
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects checkpoint nonce signal mismatch",async()=>{
+  signals[11]=8n;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a zeroed checkpoint account signal",async()=>{
+  signals[3]=0n;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a zeroed checkpoint delegatee signal",async()=>{
+  signals[4]=0n;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a zeroed checkpoint authorization commitment signal",async()=>{
+  signals[1]=0n;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a zeroed checkpoint commitment signal",async()=>{
+  signals[18]=0n;
+  await assert.rejects(()=>harness.checkCheckpoint(checkpoint,signals),/CheckpointBindingMismatch/);
+ });
+ it("rejects a transaction with the calldata hash upper half cleared",async()=>{
+  signals[9]=0n;
+  await assert.rejects(checkTx,/InvalidTransaction/);
+ });
+ it("rejects a transaction with the calldata hash lower half cleared",async()=>{
+  signals[8]=0n;
+  await assert.rejects(checkTx,/InvalidTransaction/);
+ });
+
 });
