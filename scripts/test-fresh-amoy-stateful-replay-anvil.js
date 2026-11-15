@@ -129,6 +129,30 @@ async function main(){
   const tamperedData=new ethers.Interface(["function setValue(uint256)"]).encodeFunctionData("setValue",[889n]);
   if(tamperedData===data)throw Error("Tampered call data was not changed");
   const tamperedCalldata=iface.encodeFunctionData("executeAuthorized",[cp,signed.signature,a3,b3,c3,s3,a4,b4,c4,s4,target,BigInt(v3[7]),tamperedData]);
+  // Policy/signature integrity: a changed geographic zone cannot reuse the
+  // validator signature of the original checkpoint.
+  const alteredZone=ethers.toBeHex(BigInt(cp.zoneHash)^1n,32);
+  const alteredCheckpoint={...cp,zoneHash:alteredZone};
+  const zoneCalldata=iface.encodeFunctionData("executeAuthorized",[alteredCheckpoint,signed.signature,a3,b3,c3,s3,a4,b4,c4,s4,target,BigInt(v3[7]),data]);
+  console.log("DIAGNOSTIC: checking altered checkpoint geographic zone");
+  const assertReverts=async (call,label)=>{
+   let timer;
+   try{
+    await Promise.race([provider.call({from:cp.delegatee,to:cp.account,data:call,gasLimit:12000000n}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("TIMEOUT: "+label)),30000)})]);
+   }catch(e){
+    if(String(e.message).includes("TIMEOUT:"))throw e;
+    if(e.code==="CALL_EXCEPTION"||/execution reverted|revert/i.test(e.shortMessage||e.message||""))return;
+    throw e;
+   }finally{clearTimeout(timer)}
+   throw Error("CRITICAL: "+label+" unexpectedly accepted");
+  };
+  await assertReverts(zoneCalldata,"altered geographic checkpoint");
+  if(await account.nonce()!==nonce0||
+     await registry.consumedCheckpointNonces(cp.account,cp.delegatee,cp.nonce)!==used0||
+     await bridge.consumedNullifiers(v3[2])!==null0)
+   throw Error("CRITICAL: altered geographic checkpoint changed authorization state");
+  console.log("PASS altered checkpoint geographic zone rejected");
+  console.log("PASS geographic checkpoint tampering left authorization state unchanged");
   console.log("DIAGNOSTIC: beginning tampered transaction test");
   const tamperSnapshot=await network.provider.send("evm_snapshot",[]);
   try{
@@ -162,6 +186,7 @@ async function main(){
  console.log("STATEFUL REPLAY TEST PASSED on disposable local fork");
  console.log("ATOMIC ROLLBACK TEST PASSED on disposable local fork");
  console.log("TRANSACTION TAMPERING TEST PASSED on disposable local fork");
+ console.log("GEOGRAPHIC CHECKPOINT TAMPERING TEST PASSED on disposable local fork");
  console.log("Live transaction broadcast: NO; live POL spent: 0");
  }finally{anvil.kill("SIGTERM");provider.destroy();}
 }
