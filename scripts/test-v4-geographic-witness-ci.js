@@ -54,9 +54,15 @@ async function main() {
         {stdio: "pipe"});
       passed = true;
     } catch (error) {
+      const details = [error.stderr, error.stdout, error.message]
+        .filter(Boolean).map(String).join("\n");
       if (shouldPass) {
-        process.stderr.write(String(error.stderr || error.message) + "\n");
+        throw new Error(name + ": valid witness unexpectedly failed\n" + details);
       }
+      // A missing binary, failed command, or unrelated runtime error is not
+      // evidence that the circuit rejected an invalid geographic witness.
+      assert.match(details, /assert failed|constraint|error in template/i,
+        name + ": rejection must be a circuit constraint failure, not an infrastructure failure");
     }
     assert.equal(passed, shouldPass, name + ": unexpected witness result");
     console.log("PASS " + name + " (" + (shouldPass ? "accepted" : "rejected") + ")");
