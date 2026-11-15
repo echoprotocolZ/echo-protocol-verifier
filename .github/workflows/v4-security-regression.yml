@@ -81,6 +81,8 @@ jobs:
           test -s build/v4-geographic-bound/EchoGeographicBoundV4.r1cs
           test -s build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm
           echo 'V4 circuit compile and WASM generation passed; no proof generated'
+      - name: Verify V4 geographic witnesses and adversarial rejection
+        run: node scripts/test-v4-geographic-witness-ci.js
 
   full-suite-diagnostic:
     # Secrets are unavailable to untrusted pull-request workflows.
