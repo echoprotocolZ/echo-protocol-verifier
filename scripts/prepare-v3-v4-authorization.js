@@ -67,7 +67,7 @@ async function main() {
 
   const currentTimestamp = BigInt(latest.timestamp);
 
-  const nonce = 0n;
+  const nonce = await new hre.ethers.Contract(account, ["function nonce() view returns (uint256)"], provider).nonce();
   const deadline = currentTimestamp + 7200n;
   const minTimestamp = timestamp - 3600n;
   const maxTimestamp = timestamp + 3600n;
@@ -83,12 +83,14 @@ async function main() {
     fragmentSalt
   ]);
 
-  // Synthetic transaction-binding test values.
-  // These do not authorize a real transaction.
-  const target =
-    "0xbD2dEf17C60C3f6C2dA6eE812F948f4B53f2f803";
+  const target = r.TestTarget;
+  if (!target || await provider.getCode(target) === "0x") {
+    throw new Error("TestTarget not deployed on Amoy");
+  }
   const value = 0n;
-  const callData = "0x";
+  const callData = new hre.ethers.Interface(
+    ["function setValue(uint256)"]
+  ).encodeFunctionData("setValue", [888n]);
   const calldataHash = BigInt(hre.ethers.keccak256(callData));
   const mask = (1n << 128n) - 1n;
 

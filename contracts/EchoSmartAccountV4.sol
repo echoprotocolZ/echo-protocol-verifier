@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "./EchoV4AdminIntent.sol";
+
 interface IEchoAuthorizationBridgeForAccountV4 {
     struct SignedCheckpoint {
         address account;
@@ -118,6 +120,13 @@ contract EchoSmartAccountV4 {
             target == policyRegistry
         ) revert InvalidAddress();
 
+        _validateExecutionPolicy(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
+
         uint256 currentNonce = nonce;
 
         bool authorized = authorizationBridge.authorize(
@@ -131,99 +140,137 @@ contract EchoSmartAccountV4 {
 
         nonce = currentNonce + 1;
 
-        (bool success, bytes memory output) = target.call{value: value}(data);
-        if (!success) revert ExecutionFailed(output);
+        _beforeAuthorizedExecution(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
+
+        bytes memory output = _performAuthorizedCall(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
+
+        _afterAuthorizedExecution(
+            checkpoint.delegatee,
+            target,
+            value,
+            data
+        );
 
         emit Executed(target, value, data, currentNonce);
         return output;
     }
 
+
+
+    /// @dev Default V4 execution; Z may override for atomic staking.
+    function _performAuthorizedCall(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal virtual returns (bytes memory) {
+        delegatee;
+        (bool success, bytes memory output) = target.call{value: value}(data);
+        if (!success) revert ExecutionFailed(output);
+        return output;
+    }
+
+    /// @dev Extension point for stateful account-specific execution checks.
+    /// Legacy V4 behavior remains unchanged.
+    function _beforeAuthorizedExecution(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal virtual {
+        delegatee;
+        target;
+        value;
+        data;
+    }
+
+    /// @dev Post-execution extension point for account-specific
+    /// accounting. Legacy V4 behavior remains unchanged.
+    function _afterAuthorizedExecution(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal virtual {
+        delegatee;
+        target;
+        value;
+        data;
+    }
+
+    /// @dev Extension point for stricter account-specific
+    /// execution policies. Legacy V4 behavior is unchanged.
+    function _validateExecutionPolicy(
+        address delegatee,
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal view virtual {
+        delegatee;
+        target;
+        value;
+        data;
+    }
+
+    /// @notice Preview the exact domain-separated ownership intent bytes.
+    /// @dev Read-only helper. This does not grant ownership or consume proofs.
+    ///      The future proof-authorized entrypoint must verify this payload
+    ///      through the bridge before changing pendingOwner.
+    function ownershipProposalIntent(
+        address successor,
+        uint256 deadline
+    ) external view returns (bytes memory) {
+        return EchoV4AdminIntent.ownershipProposalPayload(
+            address(this),
+            successor,
+            block.chainid,
+            nonce,
+            deadline
+        );
+    }
+
+    /// @notice Disabled until proof-bound administration is implemented.
     function executeAdministration(
         address destination,
         bytes calldata data
     ) external nonReentrantExecution returns (bytes memory result) {
-        if (msg.sender != owner) revert Unauthorized();
-
-        address registry = authorizationBridge.checkpointRegistry();
-
-        if (
-            destination != registry &&
-            destination != address(authorizationBridge)
-        ) revert Unauthorized();
-
-        (bool success, bytes memory output) = destination.call(data);
-        if (!success) revert ExecutionFailed(output);
-
-        return output;
+        destination;
+        data;
+        revert Unauthorized();
     }
-
 
     /// @notice Owner-only geographic policy administration.
     /// @dev Resolves the policy registry through immutable V4 dependencies.
+    /// @notice Disabled until proof-bound geographic administration is implemented.
     function executeGeographicAdministration(
         bytes calldata data
     ) external nonReentrantExecution returns (bytes memory result) {
-        if (msg.sender != owner) revert Unauthorized();
-
-        address dualVerifier = authorizationBridge.dualProofVerifier();
-
-        (bool ok, bytes memory response) = dualVerifier.staticcall(
-            abi.encodeWithSignature("v4Gateway()")
-        );
-        if (!ok || response.length != 32) revert InvalidAddress();
-
-        address gateway = abi.decode(response, (address));
-
-        (ok, response) = gateway.staticcall(
-            abi.encodeWithSignature("policyRegistry()")
-        );
-        if (!ok || response.length != 32) revert InvalidAddress();
-
-        address policyRegistry = abi.decode(response, (address));
-        if (policyRegistry.code.length == 0) revert InvalidAddress();
-
-        if (data.length < 4) revert Unauthorized();
-
-        bytes4 selector = bytes4(data[:4]);
-
-        bytes4 setPolicy = bytes4(
-            keccak256("setGeographicPolicy(address,(uint32,uint32,uint32,uint32))")
-        );
-        bytes4 disablePolicy = bytes4(
-            keccak256("disableGeographicPolicy(address)")
-        );
-
-        if (selector != setPolicy && selector != disablePolicy) {
-            revert Unauthorized();
-        }
-
-        (bool success, bytes memory output) = policyRegistry.call(data);
-        if (!success) revert ExecutionFailed(output);
-
-        return output;
+        data;
+        revert Unauthorized();
     }
 
     function setEntryPoint(address newEntryPoint) external {
-        if (msg.sender != owner) revert Unauthorized();
-        emit EntryPointUpdated(entryPoint, newEntryPoint);
-        entryPoint = newEntryPoint;
+        newEntryPoint;
+        revert Unauthorized();
     }
 
     function transferOwnership(address newOwner) external {
-        if (msg.sender != owner || newOwner == address(0)) revert Unauthorized();
-        pendingOwner = newOwner;
-        emit OwnershipTransferStarted(owner, newOwner);
+        newOwner;
+        revert Unauthorized();
     }
 
     function acceptOwnership() external {
-        if (msg.sender != pendingOwner || pendingOwner == address(0))
-            revert Unauthorized();
-
-        address previousOwner = owner;
-        owner = pendingOwner;
-        pendingOwner = address(0);
-
-        emit OwnershipTransferred(previousOwner, owner);
+        revert Unauthorized();
     }
 
     receive() external payable {}

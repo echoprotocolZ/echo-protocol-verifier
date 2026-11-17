@@ -64,7 +64,7 @@ async function main() {
   );
 
   const value = 0n;
-  const callData = "0x";
+  const callData = new hre.ethers.Interface(["function setValue(uint256)"]).encodeFunctionData("setValue", [888n]);
 
   console.log("=== STEP 637: FULL AUTHORIZATION SIMULATION ===");
   console.log("Network: Polygon Amoy");
