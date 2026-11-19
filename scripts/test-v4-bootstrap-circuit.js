@@ -19,7 +19,9 @@ async function main() {
   try {
     const circuit = path.resolve("circuits/v4/EchoBootstrapAuthorizationV1.circom");
     const circom = require.resolve("circom2/cli.js");
+    console.log("BOOTSTRAP_STAGE: compile circuit");
     run(process.execPath, [circom, circuit, "-l", path.resolve("node_modules"), "--wasm", "--r1cs", "-o", tmp]);
+    console.log("BOOTSTRAP_STAGE: compile complete");
     const wasm = path.join(tmp, "EchoBootstrapAuthorizationV1_js", "EchoBootstrapAuthorizationV1.wasm");
     const witness = path.join(tmp, "witness.wtns");
     const poseidon = await buildPoseidon();
@@ -35,12 +37,16 @@ async function main() {
     };
     const good = path.join(tmp, "good.json");
     fs.writeFileSync(good, JSON.stringify(valid));
+    console.log("BOOTSTRAP_STAGE: calculate valid witness");
     await snarkjs.wtns.calculate(valid, wasm, witness);
+    console.log("BOOTSTRAP_STAGE: witness calculated");
     assert.equal(await snarkjs.wtns.check(path.join(tmp, "EchoBootstrapAuthorizationV1.r1cs"), witness), true);
+    console.log("BOOTSTRAP_STAGE: tamper checks");
     for (const [field, badValue] of [
       ["trustedRoot", "1"], ["expectedNullifier", "1"], ["account", "54321"],
       ["chainId", "137"], ["bootstrapNonce", "1"], ["actionHash", "88888"]
     ]) {
+      console.log("BOOTSTRAP_STAGE: tamper", field);
       const invalid = { ...valid, [field]: badValue };
       let rejected = false;
       try {
