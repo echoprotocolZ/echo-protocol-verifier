@@ -263,6 +263,35 @@ contract EchoSmartAccountV4 {
         );
     }
 
+    /// @notice Preview an account-bound signer configuration intent.
+    /// @dev Read-only; cannot change trusted signers or authorize administration.
+    function signerConfigurationIntent(
+        address registry,
+        address signer,
+        bool hardware,
+        bool trusted,
+        uint256 deadline
+    ) external view returns (bytes memory) {
+        return EchoV4AdminIntent.signerConfigurationPayload(
+            address(this), registry, signer, hardware, trusted,
+            block.chainid, nonce, deadline
+        );
+    }
+
+    /// @notice Preview an account-bound policy configuration intent.
+    /// @dev policyHash binds the exact canonical policy tuple; no state changes.
+    function attestationPolicyIntent(
+        address registry,
+        address delegatee,
+        bytes32 policyHash,
+        uint256 deadline
+    ) external view returns (bytes memory) {
+        return EchoV4AdminIntent.attestationPolicyPayload(
+            address(this), registry, delegatee, policyHash,
+            block.chainid, nonce, deadline
+        );
+    }
+
     /// @notice Disabled until proof-bound administration is implemented.
     function executeAdministration(
         address destination,
