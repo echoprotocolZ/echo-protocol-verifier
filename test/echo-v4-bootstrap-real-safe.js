@@ -85,6 +85,29 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
     assert.equal(await factory.deployed(), false);
     await (await safe.connect(safeSelf).swapOwner(prevOwner, replacement.address, ownerToReplace)).wait();
     await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [await safe.getAddress()] });
+    // Chain-domain replay: sign an otherwise identical approval for another
+    // chain ID, then present it to the factory on the current local chain.
+    const currentChain = (await ethers.provider.getNetwork()).chainId;
+    const otherChain = currentChain + 1n;
+    const otherChainDigest = ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(
+      ["bytes32", "uint256", "address", "address", "address", "address", "uint256", "bytes32", "address", "address"],
+      [await factory.APPROVAL_DOMAIN(), otherChain, await factory.getAddress(),
+       await safe.getAddress(), registryAddress, verifierAddress, root, salt,
+       await factory.predictGate(), await factory.predictExecutor(registryAddress, salt)]
+    ));
+    assert.notEqual(otherChainDigest, digest, "approval digest must bind chain ID");
+    const otherChainMessageHash = await safe1271.getMessageHash(
+      ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [otherChainDigest])
+    );
+    const wrongChainSignatures = await Promise.all([ownerA, ownerB].map(async signer => {
+      const sig = ethers.Signature.from(await signer.signMessage(ethers.getBytes(otherChainMessageHash)));
+      return { address: signer.address.toLowerCase(),
+        bytes: ethers.concat([sig.r, sig.s, ethers.toBeHex(sig.v + 4, 1)]) };
+    }));
+    wrongChainSignatures.sort((a, b) => a.address.localeCompare(b.address));
+    await assert.rejects(deploy(ethers.concat(wrongChainSignatures.map(s => s.bytes))),
+      "approval signed for another chain must fail");
+    assert.equal(await factory.deployed(), false);
     // A second official Safe with the same owners must not validate the first
     // Safe's approval. Safe's EIP-712 message hash binds the verifying Safe.
     const secondTx = await proxyFactory.createProxyWithNonce(await singleton.getAddress(), setup, 12346);
