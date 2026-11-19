@@ -44,4 +44,33 @@ describe("Echo V4 bridge registration intent preview (read-only)", function () {
     await assert.rejects(account.bridgeRegistrationIntent(registry.target, bridge.target, true, 0));
     assert.equal(await account.nonce(), 0n);
   });
+  it("binds intents to exact account, registry, bridge and deadline", async function () {
+    const otherRegistry = await (await ethers.getContractFactory("EchoAttestationRegistryV3")).deploy();
+    await otherRegistry.waitForDeployment();
+    const otherBridge = await (await ethers.getContractFactory("EchoLocalExecutionBridgeMock")).deploy(
+      registry.target, registry.target
+    );
+    await otherBridge.waitForDeployment();
+    const otherAccount = await (await ethers.getContractFactory("EchoSmartAccountV4")).deploy(
+      owner.address, ethers.ZeroAddress, bridge.target
+    );
+    await otherAccount.waitForDeployment();
+    const original = await account.bridgeRegistrationIntent(registry.target, bridge.target, true, 2000000000);
+    assert.notEqual(original, await otherAccount.bridgeRegistrationIntent(registry.target, bridge.target, true, 2000000000));
+    assert.notEqual(original, await account.bridgeRegistrationIntent(otherRegistry.target, bridge.target, true, 2000000000));
+    assert.notEqual(original, await account.bridgeRegistrationIntent(registry.target, otherBridge.target, true, 2000000000));
+    assert.notEqual(original, await account.bridgeRegistrationIntent(registry.target, bridge.target, true, 2000000001));
+    assert.equal(await account.nonce(), 0n);
+    assert.equal(await registry.authorizedCheckpointBridges(account.target, bridge.target), false);
+  });
+  it("does not unlock legacy administration after preview", async function () {
+    await account.bridgeRegistrationIntent(registry.target, bridge.target, true, 2000000000);
+    const data = registry.interface.encodeFunctionData("setCheckpointBridge", [bridge.target, true]);
+    await assert.rejects(account.executeAdministration(registry.target, data));
+    await assert.rejects(account.transferOwnership(owner.address));
+    await assert.rejects(account.setEntryPoint(owner.address));
+    assert.equal(await account.nonce(), 0n);
+    assert.equal(await registry.authorizedCheckpointBridges(account.target, bridge.target), false);
+  });
+
 });
