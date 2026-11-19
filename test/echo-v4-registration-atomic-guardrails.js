@@ -77,4 +77,27 @@ describe("Echo V4 registration and atomic rollback guardrails", function () {
     assert.equal(await bridge.calls(), 0n);
   });
 
+  it("does not let an EOA bootstrap the smart account's trusted signer or policy", async function () {
+    const zone = ethers.id("local-zone");
+    await (await registry.connect(owner).setValidatorSigner(owner.address, true)).wait();
+    await (await registry.connect(owner).setAttestationPolicy(owner.address, [
+      zone, 300, 0, false, true
+    ])).wait();
+    assert.equal(await registry.trustedValidatorSigners(owner.address, owner.address), true);
+    assert.equal(await registry.trustedValidatorSigners(account.target, owner.address), false);
+    const ownerPolicy = await registry.attestationPolicies(owner.address, owner.address);
+    const accountPolicy = await registry.attestationPolicies(account.target, owner.address);
+    assert.equal(ownerPolicy.enabled, true);
+    assert.equal(accountPolicy.enabled, false);
+    const signerCall = registry.interface.encodeFunctionData("setValidatorSigner", [owner.address, true]);
+    await assert.rejects(account.executeAdministration(registry.target, signerCall));
+    const policyCall = registry.interface.encodeFunctionData("setAttestationPolicy", [
+      owner.address, [zone, 300, 0, false, true]
+    ]);
+    await assert.rejects(account.executeAdministration(registry.target, policyCall));
+    assert.equal(await registry.trustedValidatorSigners(account.target, owner.address), false);
+    assert.equal((await registry.attestationPolicies(account.target, owner.address)).enabled, false);
+    assert.equal(await account.nonce(), 0n);
+  });
+
 });
