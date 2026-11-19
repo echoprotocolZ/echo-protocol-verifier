@@ -5,7 +5,7 @@ const { ethers } = require("hardhat");
 // This test must never connect to a live chain.
 describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function () {
   it("accepts two owner signatures and rejects one or modified approval", async function () {
-    const [ownerA, ownerB, outsider] = await ethers.getSigners();
+    const [ownerA, ownerB, outsider, replacement] = await ethers.getSigners();
     const artifact = name => {
       const paths = {
         Safe: "Safe.sol",
@@ -50,7 +50,24 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
     const deploy = sig => factory.connect(outsider).deployApprovedPair(registryAddress, verifierAddress, root, salt, sig);
     await assert.rejects(deploy(signatures[0].bytes), "single owner signature must fail");
     await assert.rejects(factory.connect(outsider).deployApprovedPair(registryAddress, verifierAddress, root + 1n, salt, both), "modified root must fail");
+    const wrong = ethers.Signature.from(await replacement.signMessage(ethers.getBytes(safeMessageHash)));
+    const substituted = [signatures[0], {
+      address: replacement.address.toLowerCase(),
+      bytes: ethers.concat([wrong.r, wrong.s, ethers.toBeHex(wrong.v + 4, 1)])
+    }].sort((a, b) => a.address.localeCompare(b.address));
+    await assert.rejects(deploy(ethers.concat(substituted.map(s => s.bytes))), "non-owner signature must fail");
+    await assert.rejects(deploy(ethers.concat([signatures[0].bytes, signatures[0].bytes])), "duplicate owner must fail");
+    await assert.rejects(deploy("0x"), "empty signature must fail");
+    await assert.rejects(factory.connect(outsider).deployApprovedPair(
+      registryAddress, verifierAddress, root, ethers.id("altered-safe-salt"), both
+    ), "altered salt must fail");
+    const alternateVerifier = await (await ethers.getContractFactory("EchoBootstrapVerifierStub")).deploy(false);
+    await assert.rejects(factory.connect(outsider).deployApprovedPair(
+      registryAddress, await alternateVerifier.getAddress(), root, salt, both
+    ), "altered verifier must fail");
+    assert.equal(await factory.deployed(), false, "failed authorizations must not deploy");
     await (await deploy(both)).wait();
     assert.equal(await factory.deployed(), true);
+    await assert.rejects(deploy(both), "replay after deployment must fail");
   });
 });
