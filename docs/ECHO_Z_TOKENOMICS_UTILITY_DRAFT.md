@@ -1,6 +1,6 @@
 # Echo Protocol Z — Tokenomics and Utility Framework (DRAFT)
 
-**Status: PROPOSAL ONLY — NOT APPROVED OR LIVE.** Prepared 2026-11-19. This document is for founder review and audit planning, not an offer, return promise, or claim of current allocation. Do not publish as finalized tokenomics without explicit approval and on-chain reconciliation.
+**Status: WORKING ALLOCATION APPROVED BY PROJECT FOUNDER — NOT EXECUTED OR LIVE.** Prepared 2026-11-19. This document is for founder review and audit planning, not an offer, return promise, or claim of current allocation. The 20% combined founder allocation and corresponding 25% community share are approved as a working plan, not as executed token distributions. Do not publish as finalized tokenomics without on-chain reconciliation and approval of remaining terms.
 
 ## 1. Token identity and supply boundary
 
@@ -14,15 +14,15 @@
 
 | Allocation | Share | ECHO | Proposed controls |
 |---|---:|---:|---|
-| Community and ecosystem participation | 30% | 30,000,000 | Published eligibility and anti-sybil rules; staged release |
+| Community and ecosystem participation | 25% | 25,000,000 | Published eligibility and anti-sybil rules; staged release |
 | Network incentives and staking reward reserve | 20% | 20,000,000 | Explicit funded reserve; audited payout and accounting |
 | Protocol treasury and security | 20% | 20,000,000 | Multisig-controlled budgets; audit and operations reporting |
-| Founders and core contributors | 15% | 15,000,000 | 12-month cliff then 36-month monthly vesting (proposal) |
+| Founders and core contributors | 20% | 20,000,000 | 12-month cliff then 36-month monthly vesting (proposal) |
 | Liquidity and market infrastructure | 10% | 10,000,000 | Separate approval, documented counterparties and custody |
 | Advisors and strategic contributors | 5% | 5,000,000 | 6-month cliff then 24-month monthly vesting (proposal) |
 | **Total** | **100%** | **100,000,000** | **No transfers or assignments authorized** |
 
-**Founder allocation is a shared 15% pool, not 15% per founder.** Exact beneficiaries, amounts, vesting start, clawbacks, and custody must be decided before implementation. These categories describe a *proposed allocation of existing supply*, not permission to mint additional tokens.
+**Founder allocation is an approved working-plan 20% combined pool (20,000,000 ECHO), not 20% per founder.** The proposed equal split is 10,000,000 ECHO (10%) each for the two founders, subject to their explicit confirmation, vesting, current holdings reconciliation, and implementation approval. Exact beneficiaries, amounts, vesting start, clawbacks, and custody must be decided before implementation. These categories describe a *proposed allocation of existing supply*, not permission to mint additional tokens.
 
 ## 3. Utility — distinguish present code from future design
 
@@ -52,7 +52,7 @@ Possible revenue sources for future evaluation: fees for verified routing/author
 
 ## 7. Open decisions / release gates
 
-1. Founders approve or amend the six allocation percentages and beneficiary rules.
+1. Confirm the proposed equal split within the approved 20% combined founder pool, remaining allocation percentages, beneficiary rules, and vesting terms.
 2. Reconcile designated ECHO token identity, duplicate deployment, current supply and holder balances on Polygon.
 3. Verify deployed staking runtime against exact source, compiler settings and constructor parameters.
 4. Determine whether staking rewards are funded, what they pay for, and whether privileged slashing is acceptable.
