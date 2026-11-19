@@ -14,7 +14,7 @@
 | Advisors | 5% | 5,000,000 |
 | **Total** | **100%** | **100,000,000** |
 
-Proposed equal founder split: 10,000,000 ECHO each, **not yet confirmed as an individual assignment**. No wallets have been assigned to allocations.
+**Approved working founder split:** 10,000,000 ECHO (10% of total supply) for each of the two founders, Rachelle Rowe and Zach. This is a planning allocation, not an executed grant or transfer. No beneficiary wallets have been assigned.
 
 ## Phase 1: chain reconciliation — mandatory before any movement
 
@@ -28,10 +28,10 @@ Proposed equal founder split: 10,000,000 ECHO each, **not yet confirmed as an in
 
 ## Phase 2: founder vesting decision
 
-Proposed combined founder pool: 20,000,000 ECHO. **Approved working vesting schedule:** 12-month cliff followed by 36 monthly releases after the cliff; total duration 48 months. This approves the schedule concept only, not a grant, beneficiary, funding, start date, or contract deployment.
+Approved working combined founder pool: 20,000,000 ECHO (10,000,000 ECHO per founder). **Approved working vesting schedule:** 12-month cliff followed by 36 monthly releases after the cliff; total duration 48 months. This approves the schedule concept only, not a grant, beneficiary, funding, start date, or contract deployment.
 
 Required choices:
-1. Confirm individual founder split and beneficiary wallets (the equal 10M/10M split remains proposed).
+1. Equal 10M/10M founder split approved as a working allocation; verify beneficiary identities and wallets before any assignment.
 2. Confirm start timestamp (no automatic backdating) and exact definition of a month (calendar dates or fixed seconds).
 3. Define cliff behavior: zero unlock before cliff; whether first installment unlocks at month 13 or a tranche unlocks at the 12-month cliff.
 4. Define revocation rights, resignation/termination, death/inheritance, transferability, and emergency recovery.
@@ -51,7 +51,7 @@ Required choices:
 
 ## Phase 3: release gate
 
-- [ ] Confirm individual founder split and all remaining vesting implementation terms in writing (12-month cliff + 36 monthly releases approved as working schedule).
+- [ ] Confirm beneficiary wallets and remaining vesting implementation terms in writing (10M/10M split and 12-month cliff + 36 monthly releases approved as working plan).
 - [ ] Complete on-chain token and holder reconciliation.
 - [ ] Obtain relevant legal/tax and independent smart-contract security review.
 - [ ] Verify production source-to-bytecode equivalence for all contracts relied on.
