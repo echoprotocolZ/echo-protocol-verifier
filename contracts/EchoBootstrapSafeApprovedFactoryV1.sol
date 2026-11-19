@@ -5,6 +5,8 @@ import "./EchoBootstrapProofGateV1.sol";
 import "./EchoBootstrapBridgeExecutorV1.sol";
 
 interface IEchoBootstrapSafe1271 {
+    function getThreshold() external view returns (uint256);
+    function getOwners() external view returns (address[] memory);
     function isValidSignature(bytes32 hash, bytes calldata signatures) external view returns (bytes4);
 }
 
@@ -20,6 +22,8 @@ contract EchoBootstrapSafeApprovedFactoryV1 {
         21888242871839275222246405745257275088696311157297823662689037894645226208583;
 
     address public immutable approvedSafe;
+    address public immutable firstSigner;
+    address public immutable secondSigner;
     bool public deployed;
     error InvalidSafe();
     error InvalidConfiguration();
@@ -31,7 +35,13 @@ contract EchoBootstrapSafeApprovedFactoryV1 {
 
     constructor(address safe_) {
         if (safe_.code.length == 0) revert InvalidSafe();
+        IEchoBootstrapSafe1271 safe = IEchoBootstrapSafe1271(safe_);
+        if (safe.getThreshold() != 2) revert InvalidSafe();
+        address[] memory owners = safe.getOwners();
+        if (owners.length != 2 || owners[0] == address(0) || owners[1] == address(0) || owners[0] == owners[1]) revert InvalidSafe();
         approvedSafe = safe_;
+        firstSigner = owners[0];
+        secondSigner = owners[1];
     }
 
     function predictGate() public view returns (address) {
@@ -69,6 +79,14 @@ contract EchoBootstrapSafeApprovedFactoryV1 {
         if (registry.code.length == 0 || verifier.code.length == 0 ||
             root == 0 || root >= FIELD_MODULUS) revert InvalidConfiguration();
 
+        // Reject a Safe whose owner set or threshold has changed since enrollment.
+        IEchoBootstrapSafe1271 safe = IEchoBootstrapSafe1271(approvedSafe);
+        if (safe.getThreshold() != 2) revert InvalidSafe();
+        address[] memory owners = safe.getOwners();
+        if (owners.length != 2 || !(
+            (owners[0] == firstSigner && owners[1] == secondSigner) ||
+            (owners[0] == secondSigner && owners[1] == firstSigner)
+        )) revert InvalidSafe();
         bytes32 digest = approvalDigest(registry, verifier, root, salt);
         // A Safe must validate its own threshold and signatures.
         try IEchoBootstrapSafe1271(approvedSafe).isValidSignature(digest, safeSignatures)
