@@ -33,6 +33,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Compile bootstrap circuit and test witness constraints (no proof)
-        run: node scripts/test-v4-bootstrap-circuit.js
+        run: timeout --signal=TERM --kill-after=10s 180s node scripts/test-v4-bootstrap-circuit.js
       - name: Run local-only V4 boundary and rollback regressions
+        if: always()
         run: npx hardhat test test/echo-v4-local-proof-execution-registration-boundary.js test/echo-v4-registration-atomic-guardrails.js test/echo-v4-registration-intent-preview.js test/echo-v4-typed-bootstrap-intents.js --network hardhat
