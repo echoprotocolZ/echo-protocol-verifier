@@ -6,13 +6,16 @@ const { ethers } = require("hardhat");
 describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function () {
   it("accepts two owner signatures and rejects one or modified approval", async function () {
     const [ownerA, ownerB, outsider] = await ethers.getSigners();
-    const Safe = await ethers.getContractFactory("Safe");
+    const artifact = name => require(`@safe-global/safe-contracts/build/artifacts/contracts/${name}.sol/${name}.json`);
+    const officialFactory = (name, signer) => new ethers.ContractFactory(artifact(name).abi, artifact(name).bytecode, signer);
+    const Safe = officialFactory("Safe", ownerA);
     const singleton = await Safe.deploy();
-    const ProxyFactory = await ethers.getContractFactory("SafeProxyFactory");
+    const ProxyFactory = officialFactory("SafeProxyFactory", ownerA);
+    const fallbackHandler = await officialFactory("CompatibilityFallbackHandler", ownerA).deploy();
     const proxyFactory = await ProxyFactory.deploy();
     const setup = Safe.interface.encodeFunctionData("setup", [
       [ownerA.address, ownerB.address], 2, ethers.ZeroAddress, "0x",
-      ethers.ZeroAddress, ethers.ZeroAddress, 0, ethers.ZeroAddress
+      await fallbackHandler.getAddress(), ethers.ZeroAddress, 0, ethers.ZeroAddress
     ]);
     const tx = await proxyFactory.createProxyWithNonce(await singleton.getAddress(), setup, 12345);
     const receipt = await tx.wait();
@@ -21,6 +24,7 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
     }).find(log => log?.name === "ProxyCreation");
     assert(event, "Safe proxy creation event missing");
     const safe = Safe.attach(event.args.proxy);
+    const safe1271 = new ethers.Contract(event.args.proxy, artifact("CompatibilityFallbackHandler").abi, ownerA);
     assert.equal(await safe.getThreshold(), 2n);
     const registry = await (await ethers.getContractFactory("EchoAttestationRegistryV3")).deploy();
     const verifier = await (await ethers.getContractFactory("EchoBootstrapVerifierStub")).deploy(false);
@@ -29,7 +33,7 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
     const registryAddress = await registry.getAddress(), verifierAddress = await verifier.getAddress();
     const digest = await factory.approvalDigest(registryAddress, verifierAddress, root, salt);
     // Safe's EIP-1271 bytes32 variant checks the signed hash of its EIP-712 message.
-    const safeMessageHash = await safe.getMessageHash(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [digest]));
+    const safeMessageHash = await safe1271.getMessageHash(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [digest]));
     const signatures = await Promise.all([ownerA, ownerB].map(async signer => {
       const sig = ethers.Signature.from(await signer.signMessage(ethers.getBytes(safeMessageHash)));
       return { address: signer.address.toLowerCase(), bytes: ethers.concat([sig.r, sig.s, ethers.toBeHex(sig.v + 4, 1)]) };
