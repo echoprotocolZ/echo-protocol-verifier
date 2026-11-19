@@ -60,4 +60,8 @@ async function main() {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
-main().catch(err => { console.error(err); process.exitCode = 1; });
+main().then(() => {
+  // snarkjs/circomlibjs may leave worker handles alive after all assertions pass.
+  // Explicitly terminate only after awaited checks and temporary-file cleanup.
+  process.exit(0);
+}).catch(err => { console.error(err); process.exit(1); });
