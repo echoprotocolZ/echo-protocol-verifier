@@ -86,6 +86,52 @@ async function main() {
     }
     console.log("PASS local EVM Groth16 verifier + immutable proof gate and six tamper rejections");
 
+    // End-to-end: real proof -> immutable gate -> executor -> V3 account-scoped registry.
+    await hre.run("compile");
+    const realRegistry = await (await hre.ethers.getContractFactory("EchoAttestationRegistryV3")).deploy();
+    await realRegistry.waitForDeployment();
+    const pairFactory = await (await hre.ethers.getContractFactory("EchoBootstrapPairFactoryV1")).deploy();
+    await pairFactory.waitForDeployment();
+    const pairSalt = hre.ethers.id("echo-bootstrap-e2e-local-only");
+    const registryAddress = await realRegistry.getAddress();
+    const executorAddress = await pairFactory.predictExecutor(registryAddress, pairSalt);
+    const gateAddress = await pairFactory.predictGate();
+    await (await pairFactory.deployPair(registryAddress, await verifier.getAddress(),
+      BigInt(input.trustedRoot), pairSalt)).wait();
+    const executor = await hre.ethers.getContractAt("EchoBootstrapBridgeExecutorV1", executorAddress);
+    const pairGate = await hre.ethers.getContractAt("EchoBootstrapProofGateV1", gateAddress);
+    assert.equal(await pairGate.account(), executorAddress);
+    const bridge = await deploy("LocalRegistry.sol", "LocalRegistry");
+    const bridgeAddress = await bridge.getAddress();
+    const deadline = BigInt((await hre.ethers.provider.getBlock("latest")).timestamp + 3600);
+    const action = await executor.actionHash(bridgeAddress, true, 0n, deadline);
+    const accountNumber = BigInt(executorAddress);
+    const executionInput = {
+      ...input, account: String(accountNumber), bootstrapNonce: "0",
+      actionHash: String(action),
+      expectedNullifier: hash([secret, accountNumber, chainId, 0n, action])
+    };
+    const generated = await snarkjs.groth16.fullProve(executionInput, wasm, zkey);
+    const ep = generated.proof;
+    const ea = [ep.pi_a[0], ep.pi_a[1]];
+    const eb = [[ep.pi_b[0][1], ep.pi_b[0][0]], [ep.pi_b[1][1], ep.pi_b[1][0]]];
+    const ec = [ep.pi_c[0], ep.pi_c[1]];
+    const es = generated.publicSignals.map(BigInt);
+    assert.equal(await realRegistry.authorizedCheckpointBridges(executorAddress, bridgeAddress), false);
+    await assert.rejects(executor.configureCheckpointBridge(bridgeAddress, false, deadline, ea, eb, ec, es),
+      undefined, "opposite authorization intent must reject");
+    await (await executor.configureCheckpointBridge(bridgeAddress, true, deadline, ea, eb, ec, es)).wait();
+    assert.equal(await realRegistry.authorizedCheckpointBridges(executorAddress, bridgeAddress), true);
+    assert.equal(await executor.nextNonce(), 1n);
+    assert.equal(await executor.usedNullifiers(es[5]), true);
+    await assert.rejects(executor.configureCheckpointBridge(bridgeAddress, true, deadline, ea, eb, ec, es),
+      undefined, "replayed proof must reject");
+    const changed = [...es]; changed[4] += 1n;
+    await assert.rejects(executor.configureCheckpointBridge(bridgeAddress, true, deadline, ea, eb, ec, changed),
+      undefined, "tampered action commitment must reject");
+    assert.equal(await realRegistry.authorizedCheckpointBridges(signer.address, bridgeAddress), false);
+    console.log("PASS real Groth16 proof -> pair gate -> executor -> V3 registry; replay and substitution rejected");
+
     for (let i = 0; i < publicSignals.length; i++) {
       const altered = [...publicSignals];
       altered[i] = (BigInt(altered[i]) + 1n).toString();
