@@ -5,6 +5,8 @@ on:
       - security/nonce1-authorization-preflight-2026-11
     paths:
       - 'test/echo-v4-*.js'
+      - 'circuits/v4/EchoBootstrapAuthorizationV1.circom'
+      - 'scripts/test-v4-bootstrap-circuit.js'
       - 'contracts/**'
       - '.github/workflows/echo-v4-local-security.yml'
       - 'package*.json'
@@ -30,5 +32,7 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Compile bootstrap circuit and test witness constraints (no proof)
+        run: node scripts/test-v4-bootstrap-circuit.js
       - name: Run local-only V4 boundary and rollback regressions
         run: npx hardhat test test/echo-v4-local-proof-execution-registration-boundary.js test/echo-v4-registration-atomic-guardrails.js test/echo-v4-registration-intent-preview.js test/echo-v4-typed-bootstrap-intents.js --network hardhat
