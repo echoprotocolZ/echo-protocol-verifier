@@ -44,6 +44,14 @@ describe("Echo Safe-approved bootstrap factory boundary (local mock only)", func
     assert.equal(await f.factory.deployed(), false);
   });
 
+  it("rejects changed Safe owner set even with an accepted digest", async function () {
+    const f = await setup();
+    await f.safe.approve(f.digest);
+    await f.safe.replaceOwner(0, f.outsider.address);
+    await assert.rejects(f.deploy());
+    assert.equal(await f.factory.deployed(), false);
+  });
+
   it("rejects revoked approval", async function () {
     const f = await setup();
     await f.safe.approve(f.digest);
