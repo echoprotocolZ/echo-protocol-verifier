@@ -31,4 +31,4 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Run local-only V4 boundary and rollback regressions
-        run: npx hardhat test test/echo-v4-local-proof-execution-registration-boundary.js test/echo-v4-registration-atomic-guardrails.js test/echo-v4-registration-intent-preview.js --network hardhat
+        run: npx hardhat test test/echo-v4-local-proof-execution-registration-boundary.js test/echo-v4-registration-atomic-guardrails.js test/echo-v4-registration-intent-preview.js test/echo-v4-typed-bootstrap-intents.js --network hardhat
