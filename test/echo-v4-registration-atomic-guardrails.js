@@ -100,4 +100,26 @@ describe("Echo V4 registration and atomic rollback guardrails", function () {
     assert.equal(await account.nonce(), 0n);
   });
 
+  it("blocks signer and policy bootstrap via generic authorized execution", async function () {
+    await (await bridge.setApprove(true)).wait();
+    const zone = ethers.id("local-zone");
+    const calls = [
+      registry.interface.encodeFunctionData("setValidatorSigner", [owner.address, true]),
+      registry.interface.encodeFunctionData("setHardwareSigner", [owner.address, true]),
+      registry.interface.encodeFunctionData("setAttestationPolicy", [
+        owner.address, [zone, 300, 0, false, true]
+      ])
+    ];
+    for (const data of calls) {
+      await assert.rejects(async () => {
+        await (await account.executeAuthorized(...request(registry.target, data))).wait();
+      });
+    }
+    assert.equal(await registry.trustedValidatorSigners(account.target, owner.address), false);
+    assert.equal(await registry.trustedHardwareSigners(account.target, owner.address), false);
+    assert.equal((await registry.attestationPolicies(account.target, owner.address)).enabled, false);
+    assert.equal(await bridge.calls(), 0n);
+    assert.equal(await account.nonce(), 0n);
+  });
+
 });
