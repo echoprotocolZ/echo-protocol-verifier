@@ -85,6 +85,29 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
     assert.equal(await factory.deployed(), false);
     await (await safe.connect(safeSelf).swapOwner(prevOwner, replacement.address, ownerToReplace)).wait();
     await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [await safe.getAddress()] });
+    // A second official Safe with the same owners must not validate the first
+    // Safe's approval. Safe's EIP-712 message hash binds the verifying Safe.
+    const secondTx = await proxyFactory.createProxyWithNonce(await singleton.getAddress(), setup, 12346);
+    const secondReceipt = await secondTx.wait();
+    const secondEvent = secondReceipt.logs.map(log => {
+      try { return proxyFactory.interface.parseLog(log); } catch { return null; }
+    }).find(log => log?.name === "ProxyCreation");
+    assert(secondEvent, "second Safe proxy creation event missing");
+    const secondSafe = Safe.attach(secondEvent.args.proxy);
+    assert.notEqual(await secondSafe.getAddress(), await safe.getAddress());
+    assert.equal(await secondSafe.getThreshold(), 2n);
+    const secondFactory = await (await ethers.getContractFactory("EchoBootstrapSafeApprovedFactoryV1"))
+      .deploy(await secondSafe.getAddress());
+    const secondDigest = await secondFactory.approvalDigest(registryAddress, verifierAddress, root, salt);
+    const second1271 = new ethers.Contract(await secondSafe.getAddress(), artifact("CompatibilityFallbackHandler").abi, ownerA);
+    const secondMessageHash = await second1271.getMessageHash(
+      ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [secondDigest])
+    );
+    assert.notEqual(secondMessageHash, safeMessageHash, "distinct Safes must domain-separate signatures");
+    await assert.rejects(secondFactory.connect(outsider).deployApprovedPair(
+      registryAddress, verifierAddress, root, salt, both
+    ), "first Safe approval must not authorize second Safe");
+    assert.equal(await secondFactory.deployed(), false);
     await (await deploy(both)).wait();
     assert.equal(await factory.deployed(), true);
     await assert.rejects(deploy(both), "replay after deployment must fail");
