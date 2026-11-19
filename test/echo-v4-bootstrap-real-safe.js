@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { ethers } = require("hardhat");
+const { ethers, network } = require("hardhat");
 
 // Official Safe singleton and proxy factory from @safe-global/safe-contracts.
 // This test must never connect to a live chain.
@@ -66,6 +66,24 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
       registryAddress, await alternateVerifier.getAddress(), root, salt, both
     ), "altered verifier must fail");
     assert.equal(await factory.deployed(), false, "failed authorizations must not deploy");
+    // Local-only state-transition harness: impersonation simulates an already-authorized
+    // Safe self-call. This does NOT test Safe execTransaction signature authorization.
+    await network.provider.request({ method: "hardhat_impersonateAccount", params: [await safe.getAddress()] });
+    await network.provider.send("hardhat_setBalance", [await safe.getAddress(), "0x56BC75E2D63100000"]);
+    const safeSelf = await ethers.getSigner(await safe.getAddress());
+    await (await safe.connect(safeSelf).changeThreshold(1)).wait();
+    assert.equal(await safe.getThreshold(), 1n);
+    await assert.rejects(deploy(both), "threshold downgrade must invalidate approval");
+    assert.equal(await factory.deployed(), false);
+    await (await safe.connect(safeSelf).changeThreshold(2)).wait();
+    const originalOwners = await safe.getOwners();
+    const ownerToReplace = originalOwners[0];
+    const prevOwner = originalOwners[1];
+    await (await safe.connect(safeSelf).swapOwner(prevOwner, ownerToReplace, replacement.address)).wait();
+    await assert.rejects(deploy(both), "owner replacement must invalidate approval");
+    assert.equal(await factory.deployed(), false);
+    await (await safe.connect(safeSelf).swapOwner(prevOwner, replacement.address, ownerToReplace)).wait();
+    await network.provider.request({ method: "hardhat_stopImpersonatingAccount", params: [await safe.getAddress()] });
     await (await deploy(both)).wait();
     assert.equal(await factory.deployed(), true);
     await assert.rejects(deploy(both), "replay after deployment must fail");
