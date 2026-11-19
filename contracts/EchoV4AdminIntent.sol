@@ -69,4 +69,59 @@ library EchoV4AdminIntent {
         );
     }
 
+    bytes32 internal constant VALIDATOR_SIGNER_CONFIGURATION =
+        keccak256("ECHO_V4_ADMIN_VALIDATOR_SIGNER_CONFIGURATION_V1");
+    bytes32 internal constant HARDWARE_SIGNER_CONFIGURATION =
+        keccak256("ECHO_V4_ADMIN_HARDWARE_SIGNER_CONFIGURATION_V1");
+    bytes32 internal constant ATTESTATION_POLICY_CONFIGURATION =
+        keccak256("ECHO_V4_ADMIN_ATTESTATION_POLICY_CONFIGURATION_V1");
+
+    error InvalidSigner();
+    error InvalidDelegatee();
+
+    /// @notice Encodes a signer update, without authorizing or executing it.
+    /// @dev Distinct operation tags prevent validator/hardware substitution.
+    function signerConfigurationPayload(
+        address account,
+        address registry,
+        address signer,
+        bool hardware,
+        bool trusted,
+        uint256 chainId,
+        uint256 nonce,
+        uint256 deadline
+    ) internal pure returns (bytes memory) {
+        if (account == address(0)) revert InvalidAccount();
+        if (registry == address(0)) revert InvalidRegistry();
+        if (signer == address(0)) revert InvalidSigner();
+        if (deadline == 0) revert InvalidDeadline();
+        return abi.encode(
+            hardware ? HARDWARE_SIGNER_CONFIGURATION : VALIDATOR_SIGNER_CONFIGURATION,
+            account, registry, signer, trusted, chainId, nonce, deadline
+        );
+    }
+
+    /// @notice Encodes an exact policy update by hashing its canonical ABI tuple.
+    /// @dev policyHash MUST be keccak256(abi.encode(zoneHash, maxTimeDrift,
+    ///      requiredTier, allowValidatorFallback, enabled)).
+    ///      This is an intent formatter, NOT a proof verifier.
+    function attestationPolicyPayload(
+        address account,
+        address registry,
+        address delegatee,
+        bytes32 policyHash,
+        uint256 chainId,
+        uint256 nonce,
+        uint256 deadline
+    ) internal pure returns (bytes memory) {
+        if (account == address(0)) revert InvalidAccount();
+        if (registry == address(0)) revert InvalidRegistry();
+        if (delegatee == address(0)) revert InvalidDelegatee();
+        if (deadline == 0) revert InvalidDeadline();
+        return abi.encode(
+            ATTESTATION_POLICY_CONFIGURATION,
+            account, registry, delegatee, policyHash, chainId, nonce, deadline
+        );
+    }
+
 }
