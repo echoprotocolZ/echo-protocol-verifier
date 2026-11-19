@@ -7,6 +7,8 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const snarkjs = require("snarkjs");
 const { buildPoseidon } = require("circomlibjs");
+const solc = require("solc");
+const hre = require("hardhat");
 function command(exe, args) {
   const p = spawnSync(exe, args, { encoding: "utf8", timeout: 60000 });
   if (p.error || p.status !== 0) throw new Error(String(p.error || p.stderr || p.stdout));
@@ -32,7 +34,9 @@ async function main() {
     const poseidon = await buildPoseidon();
     const hash = xs => poseidon.F.toString(poseidon(xs));
     const secret = 123456789n, salt = 987654321n;
-    const account = 12345n, chainId = 31337n, bootstrapNonce = 0n, actionHash = 99999n;
+    const [signer] = await hre.ethers.getSigners();
+    const account = BigInt(signer.address), chainId = (await hre.ethers.provider.getNetwork()).chainId;
+    const bootstrapNonce = 0n, actionHash = 99999n;
     const input = {
       trustedRoot: hash([secret, salt]),
       account: String(account), chainId: String(chainId), bootstrapNonce: String(bootstrapNonce),
@@ -43,6 +47,45 @@ async function main() {
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(input, wasm, zkey);
     assert.equal(await snarkjs.groth16.verify(vk, publicSignals, proof), true, "valid proof must verify");
     console.log("PROOF_STAGE: valid Groth16 proof verified");
+    // Compile the exact verifier exported from this ephemeral zkey, then deploy locally.
+    const verifierSol = path.join(dir, "Verifier.sol");
+    command(snarkCli, ["zkey", "export", "solidityverifier", zkey, verifierSol]);
+    const sources = {
+      "Verifier.sol": { content: fs.readFileSync(verifierSol, "utf8") },
+      "EchoBootstrapProofGateV1.sol": { content: fs.readFileSync(path.resolve("contracts/EchoBootstrapProofGateV1.sol"), "utf8") },
+      "LocalRegistry.sol": { content: "pragma solidity ^0.8.24; contract LocalRegistry {}" }
+    };
+    const compiled = JSON.parse(solc.compile(JSON.stringify({
+      language: "Solidity", sources,
+      settings: { optimizer: { enabled: true, runs: 200 }, outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } } }
+    })));
+    const errors = (compiled.errors || []).filter(e => e.severity === "error");
+    assert.equal(errors.length, 0, JSON.stringify(errors));
+    async function deploy(file, name, args = []) {
+      const artifact = compiled.contracts[file][name];
+      const factory = new hre.ethers.ContractFactory(artifact.abi, artifact.evm.bytecode.object, signer);
+      const contract = await factory.deploy(...args);
+      await contract.waitForDeployment();
+      return contract;
+    }
+    const verifierName = Object.keys(compiled.contracts["Verifier.sol"])[0];
+    const verifier = await deploy("Verifier.sol", verifierName);
+    const registry = await deploy("LocalRegistry.sol", "LocalRegistry");
+    const gate = await deploy("EchoBootstrapProofGateV1.sol", "EchoBootstrapProofGateV1",
+      [signer.address, await registry.getAddress(), await verifier.getAddress(), BigInt(input.trustedRoot)]);
+    // snarkjs uses [pi_a[0],pi_a[1]], reversed G2 pair order for Solidity.
+    const a = [proof.pi_a[0], proof.pi_a[1]];
+    const b = [[proof.pi_b[0][1], proof.pi_b[0][0]], [proof.pi_b[1][1], proof.pi_b[1][0]]];
+    const c = [proof.pi_c[0], proof.pi_c[1]];
+    const signals = publicSignals.map(BigInt);
+    assert.equal(await gate.verifyBootstrapProof(a, b, c, signals), true);
+    for (let i = 0; i < signals.length; i++) {
+      const changed = [...signals]; changed[i] += 1n;
+      await assert.rejects(gate.verifyBootstrapProof(a, b, c, changed),
+        undefined, `on-chain altered signal ${i} must reject`);
+    }
+    console.log("PASS local EVM Groth16 verifier + immutable proof gate and six tamper rejections");
+
     for (let i = 0; i < publicSignals.length; i++) {
       const altered = [...publicSignals];
       altered[i] = (BigInt(altered[i]) + 1n).toString();
