@@ -20,12 +20,13 @@ async function main() {
     const r1cs = path.join(dir, "EchoBootstrapAuthorizationV1.r1cs");
     const wasm = path.join(dir, "EchoBootstrapAuthorizationV1_js", "EchoBootstrapAuthorizationV1.wasm");
     const ptau0 = path.join(dir, "initial.ptau"), ptau1 = path.join(dir, "contributed.ptau"), ptau = path.join(dir, "final.ptau");
-    await snarkjs.powersOfTau.newAccumulator("bn128", 10, ptau0);
-    await snarkjs.powersOfTau.contribute(ptau0, ptau1, "local-test-only", "echo-bootstrap-ephemeral-test-entropy-not-production");
-    await snarkjs.powersOfTau.preparePhase2(ptau1, ptau);
+    const snarkCli = require.resolve("snarkjs/cli.js");
+    command(process.execPath, [snarkCli, "powersoftau", "new", "bn128", "12", ptau0, "-v"]);
+    command(process.execPath, [snarkCli, "powersoftau", "contribute", ptau0, ptau1, "--name=local-test-only", "-e=echo-bootstrap-ephemeral-test-entropy-not-production"]);
+    command(process.execPath, [snarkCli, "powersoftau", "prepare", "phase2", ptau1, ptau]);
     console.log("PROOF_STAGE: ephemeral powers of tau ready (NOT production trusted setup)");
     const zkey = path.join(dir, "bootstrap.zkey");
-    await snarkjs.zKey.newZKey(r1cs, ptau, zkey);
+    command(process.execPath, [snarkCli, "groth16", "setup", r1cs, ptau, zkey]);
     const vk = await snarkjs.zKey.exportVerificationKey(zkey);
     console.log("PROOF_STAGE: ephemeral Groth16 key ready");
     const poseidon = await buildPoseidon();
