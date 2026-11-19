@@ -1,0 +1,45 @@
+const assert = require("node:assert/strict");
+const { ethers } = require("hardhat");
+
+// Official Safe singleton and proxy factory from @safe-global/safe-contracts.
+// This test must never connect to a live chain.
+describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function () {
+  it("accepts two owner signatures and rejects one or modified approval", async function () {
+    const [ownerA, ownerB, outsider] = await ethers.getSigners();
+    const Safe = await ethers.getContractFactory("Safe");
+    const singleton = await Safe.deploy();
+    const ProxyFactory = await ethers.getContractFactory("SafeProxyFactory");
+    const proxyFactory = await ProxyFactory.deploy();
+    const setup = Safe.interface.encodeFunctionData("setup", [
+      [ownerA.address, ownerB.address], 2, ethers.ZeroAddress, "0x",
+      ethers.ZeroAddress, ethers.ZeroAddress, 0, ethers.ZeroAddress
+    ]);
+    const tx = await proxyFactory.createProxyWithNonce(await singleton.getAddress(), setup, 12345);
+    const receipt = await tx.wait();
+    const event = receipt.logs.map(log => {
+      try { return proxyFactory.interface.parseLog(log); } catch { return null; }
+    }).find(log => log?.name === "ProxyCreation");
+    assert(event, "Safe proxy creation event missing");
+    const safe = Safe.attach(event.args.proxy);
+    assert.equal(await safe.getThreshold(), 2n);
+    const registry = await (await ethers.getContractFactory("EchoAttestationRegistryV3")).deploy();
+    const verifier = await (await ethers.getContractFactory("EchoBootstrapVerifierStub")).deploy(false);
+    const factory = await (await ethers.getContractFactory("EchoBootstrapSafeApprovedFactoryV1")).deploy(await safe.getAddress());
+    const root = 123456n, salt = ethers.id("official-safe-local-2of2");
+    const registryAddress = await registry.getAddress(), verifierAddress = await verifier.getAddress();
+    const digest = await factory.approvalDigest(registryAddress, verifierAddress, root, salt);
+    // Safe's EIP-1271 bytes32 variant checks the signed hash of its EIP-712 message.
+    const safeMessageHash = await safe.getMessageHash(ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [digest]));
+    const signatures = await Promise.all([ownerA, ownerB].map(async signer => {
+      const sig = ethers.Signature.from(await signer.signMessage(ethers.getBytes(safeMessageHash)));
+      return { address: signer.address.toLowerCase(), bytes: ethers.concat([sig.r, sig.s, ethers.toBeHex(sig.v + 4, 1)]) };
+    }));
+    signatures.sort((a, b) => a.address.localeCompare(b.address));
+    const both = ethers.concat(signatures.map(s => s.bytes));
+    const deploy = sig => factory.connect(outsider).deployApprovedPair(registryAddress, verifierAddress, root, salt, sig);
+    await assert.rejects(deploy(signatures[0].bytes), "single owner signature must fail");
+    await assert.rejects(factory.connect(outsider).deployApprovedPair(registryAddress, verifierAddress, root + 1n, salt, both), "modified root must fail");
+    await (await deploy(both)).wait();
+    assert.equal(await factory.deployed(), true);
+  });
+});
