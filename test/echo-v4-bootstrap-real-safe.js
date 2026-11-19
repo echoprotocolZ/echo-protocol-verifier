@@ -6,7 +6,14 @@ const { ethers } = require("hardhat");
 describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function () {
   it("accepts two owner signatures and rejects one or modified approval", async function () {
     const [ownerA, ownerB, outsider] = await ethers.getSigners();
-    const artifact = name => require(`@safe-global/safe-contracts/build/artifacts/contracts/${name}.sol/${name}.json`);
+    const artifact = name => {
+      const paths = {
+        Safe: "Safe.sol",
+        SafeProxyFactory: "proxies/SafeProxyFactory.sol",
+        CompatibilityFallbackHandler: "handler/CompatibilityFallbackHandler.sol"
+      };
+      return require(`@safe-global/safe-contracts/build/artifacts/contracts/${paths[name]}/${name}.json`);
+    };
     const officialFactory = (name, signer) => new ethers.ContractFactory(artifact(name).abi, artifact(name).bytecode, signer);
     const Safe = officialFactory("Safe", ownerA);
     const singleton = await Safe.deploy();
