@@ -78,7 +78,8 @@ describe("Echo bootstrap official Safe 2-of-2 EIP-1271 integration", function ()
     await (await safe.connect(safeSelf).changeThreshold(2)).wait();
     const originalOwners = await safe.getOwners();
     const ownerToReplace = originalOwners[0];
-    const prevOwner = originalOwners[1];
+    // Safe owners form a linked list: the first owner follows sentinel address(0x1).
+    const prevOwner = "0x0000000000000000000000000000000000000001";
     await (await safe.connect(safeSelf).swapOwner(prevOwner, ownerToReplace, replacement.address)).wait();
     await assert.rejects(deploy(both), "owner replacement must invalidate approval");
     assert.equal(await factory.deployed(), false);
