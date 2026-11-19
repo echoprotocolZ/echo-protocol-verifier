@@ -34,7 +34,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Install official Safe contracts for local integration
-        run: npm install --no-save --package-lock=false @safe-global/safe-contracts@1.4.1
+        run: npm install --no-save --package-lock=false --legacy-peer-deps @safe-global/safe-contracts@1.4.1
       - name: Run official Safe 2-of-2 integration test
         run: npx hardhat test test/echo-v4-bootstrap-real-safe.js --network hardhat
       - name: Compile bootstrap circuit and test witness constraints (no proof)
