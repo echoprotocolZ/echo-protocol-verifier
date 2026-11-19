@@ -11,6 +11,7 @@ contract EchoBootstrap1271Stub {
     function getThreshold() external view returns (uint256) { return threshold; }
     function getOwners() external view returns (address[] memory) { return owners; }
     function setThreshold(uint256 value) external { threshold = value; }
+    function replaceOwner(uint256 index, address replacement) external { owners[index] = replacement; }
     bytes32 public approvedDigest;
     bool public enabled;
     function approve(bytes32 digest) external { approvedDigest = digest; enabled = true; }
