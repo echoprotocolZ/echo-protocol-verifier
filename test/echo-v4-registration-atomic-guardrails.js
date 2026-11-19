@@ -66,4 +66,15 @@ describe("Echo V4 registration and atomic rollback guardrails", function () {
     assert.equal(await account.nonce(), 1n);
     assert.equal(await target.count(), 1n);
   });
+  it("blocks registration through generic proof-authorized execution even when mock bridge approves", async function () {
+    await (await bridge.setApprove(true)).wait();
+    const data = registry.interface.encodeFunctionData("setCheckpointBridge", [bridge.target, true]);
+    await assert.rejects(async () => {
+      await (await account.executeAuthorized(...request(registry.target, data))).wait();
+    });
+    assert.equal(await registry.authorizedCheckpointBridges(account.target, bridge.target), false);
+    assert.equal(await account.nonce(), 0n);
+    assert.equal(await bridge.calls(), 0n);
+  });
+
 });
