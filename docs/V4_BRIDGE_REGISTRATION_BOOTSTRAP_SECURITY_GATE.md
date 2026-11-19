@@ -34,3 +34,39 @@ Registration must be invoked by the account itself; the registry should preserve
 - Run tests on Hardhat first; Amoy only after approval and independent review.
 
 No mainnet deployment, live token movement, or publication is authorized by this document.
+
+
+## Bootstrap dependency review — next implementation boundary
+
+The registry's account-scoped `setCheckpointBridge`, `setValidatorSigner`,
+`setHardwareSigner`, and `setAttestationPolicy` all require a call
+**originating from the account**. A bridge-registration mechanism alone will
+not initialize signer and policy state. Even after bridge registration, an
+uninitialized account cannot consume a checkpoint via the V3 registry.
+
+### Required implementation sequence
+
+1. Establish an independent, authenticated **bootstrap authority** whose
+   verifier and trust root do not depend on a checkpoint already consumed
+   through the V3 registry.
+2. Bind each permitted operation to the exact account, chain, destination,
+   parameters, nonce, deadline, and operation type.
+3. Permit only narrowly typed bootstrap actions for validator signer,
+   attestation policy, and bridge registration; do not expose arbitrary
+   target calls or unlock legacy `executeAdministration`.
+4. Define revocation and recovery separately, with explicit proof-of-control
+   and replay rules.
+5. Prove full atomic rollback and replay rejection with real verification
+   fixtures before considering a deployable replacement account.
+
+**Unresolved architectural choice:** The project has not established an
+independent bootstrap trust root or verified circuit for these exact intents.
+An owner ECDSA signature alone would be a different security model from the
+specified proof-bound administration. Until that choice is reviewed and
+approved, implementation must remain non-executable.
+
+### CI checkpoint
+
+The user reported that the workflow including the registry-target execution
+guardrail passed. This is user-reported CI evidence, not independently fetched
+job logs, and does not demonstrate genuine Groth16 verification.
