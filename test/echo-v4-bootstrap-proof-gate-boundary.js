@@ -1,4 +1,12 @@
 const { expect } = require("chai");
+const assert = require("node:assert/strict");
+
+async function rejectsCustomError(promise, errorName) {
+  await assert.rejects(promise, err => {
+    assert.ok(String(err.message).includes(errorName), `Expected ${errorName}, got: ${err.message}`);
+    return true;
+  });
+}
 const { ethers } = require("hardhat");
 
 describe("Echo bootstrap proof gate V1 read-only boundary", function () {
@@ -24,7 +32,7 @@ describe("Echo bootstrap proof gate V1 read-only boundary", function () {
   it("rejects substituted enrollment roots", async function () {
     const { gate, statement, a, b, c } = await fixture();
     statement[0] += 1n;
-    await expect(gate.verifyBootstrapProof(a, b, c, statement)).to.be.revertedWithCustomError(gate, "WrongStatement");
+    await rejectsCustomError(gate.verifyBootstrapProof(a, b, c, statement), "WrongStatement");
   });
 
   it("rejects cross-account and cross-chain statements", async function () {
@@ -32,14 +40,14 @@ describe("Echo bootstrap proof gate V1 read-only boundary", function () {
     for (const i of [1, 2]) {
       const altered = [...statement];
       altered[i] += 1n;
-      await expect(gate.verifyBootstrapProof(a, b, c, altered)).to.be.revertedWithCustomError(gate, "WrongStatement");
+      await rejectsCustomError(gate.verifyBootstrapProof(a, b, c, altered), "WrongStatement");
     }
   });
 
   it("rejects verifier refusal without changing registry state", async function () {
     const { gate, stub, registry, owner, outsider, statement, a, b, c } = await fixture();
     await stub.setAccept(false);
-    await expect(gate.verifyBootstrapProof(a, b, c, statement)).to.be.revertedWithCustomError(gate, "ProofRejected");
+    await rejectsCustomError(gate.verifyBootstrapProof(a, b, c, statement), "ProofRejected");
     expect(await registry.authorizedCheckpointBridges(owner.address, outsider.address)).to.equal(false);
   });
 
