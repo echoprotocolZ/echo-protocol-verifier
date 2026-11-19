@@ -33,6 +33,10 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Install official Safe contracts for local integration
+        run: npm install --no-save --package-lock=false @safe-global/safe-contracts@1.4.1
+      - name: Run official Safe 2-of-2 integration test
+        run: npx hardhat test test/echo-v4-bootstrap-real-safe.js --network hardhat
       - name: Compile bootstrap circuit and test witness constraints (no proof)
         run: timeout --signal=TERM --kill-after=10s 180s node scripts/test-v4-bootstrap-circuit.js
       - name: Generate and verify ephemeral local Groth16 bootstrap proof
