@@ -244,6 +244,25 @@ contract EchoSmartAccountV4 {
         );
     }
 
+    /// @notice Preview exact domain-separated bridge registration intent bytes.
+    /// @dev Read-only. Does not register bridges, authenticate proofs, or consume nonce.
+    function bridgeRegistrationIntent(
+        address registry,
+        address bridge,
+        bool authorized,
+        uint256 deadline
+    ) external view returns (bytes memory) {
+        return EchoV4AdminIntent.bridgeRegistrationPayload(
+            address(this),
+            registry,
+            bridge,
+            authorized,
+            block.chainid,
+            nonce,
+            deadline
+        );
+    }
+
     /// @notice Disabled until proof-bound administration is implemented.
     function executeAdministration(
         address destination,
