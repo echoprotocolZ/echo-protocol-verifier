@@ -36,6 +36,14 @@ describe("Echo Safe-approved bootstrap factory boundary (local mock only)", func
     assert.equal(await f.factory.deployed(), false);
   });
 
+  it("rejects threshold changes even when an approval digest remains accepted", async function () {
+    const f = await setup();
+    await f.safe.approve(f.digest);
+    await f.safe.setThreshold(1);
+    await assert.rejects(f.deploy());
+    assert.equal(await f.factory.deployed(), false);
+  });
+
   it("rejects revoked approval", async function () {
     const f = await setup();
     await f.safe.approve(f.digest);
