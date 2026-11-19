@@ -5,6 +5,12 @@ pragma solidity ^0.8.24;
 ///      Signature approval is deliberately controlled by the test harness.
 contract EchoBootstrap1271Stub {
     bytes4 internal constant MAGIC = 0x1626ba7e;
+    address[] private owners;
+    uint256 public threshold = 2;
+    constructor() { owners.push(address(0x1001)); owners.push(address(0x1002)); }
+    function getThreshold() external view returns (uint256) { return threshold; }
+    function getOwners() external view returns (address[] memory) { return owners; }
+    function setThreshold(uint256 value) external { threshold = value; }
     bytes32 public approvedDigest;
     bool public enabled;
     function approve(bytes32 digest) external { approvedDigest = digest; enabled = true; }
