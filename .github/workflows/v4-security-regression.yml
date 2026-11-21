@@ -117,11 +117,12 @@ jobs:
         shell: bash
         env:
           ECHO_CI_ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+          ECHO_CI_ARTIFACT_SHA256: ${{ secrets.ECHO_CI_ARTIFACT_SHA256 }}
         run: |
           set -euo pipefail
-          openssl enc -d -aes-256-cbc -pbkdf2 \
-            -in .ci/echo-ci-artifacts.tar.gz.enc \
-            -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
+          test -n "$ECHO_CI_ARTIFACT_SHA256" || { echo 'Required independently verified artifact digest unavailable' >&2; exit 1; }
+          printf '%s  %s\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
+          python3 scripts/extract-trusted-ci-artifacts.py
           test -f build/v2/verification_key.json
           test -f build/v3-timestamp-fixed/verification_key.json
           test -f build/v4-geographic-bound/verification_key.json
@@ -137,3 +138,49 @@ jobs:
           name: full-hardhat-results
           path: full-hardhat-results.log
           if-no-files-found: ignore
+
+  trusted-real-proof-rollback:
+    # Review-only on this PR. Secret-backed execution is permitted solely
+    # for a manual dispatch on the established trusted security branch.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/security/v4-zero-trust-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx hardhat compile
+      - name: Generate disposable V3 circuit metadata
+        run: node scripts/build-v3-test-artifacts.js
+      - name: Compile V4 witness circuit
+        run: |
+          set -euo pipefail
+          mkdir -p build/v4-geographic-bound
+          npx --no-install circom2 circuits/v4/EchoGeographicBoundV4.circom --wasm -l node_modules -o build/v4-geographic-bound
+      - name: Decrypt trusted proving artifacts
+        shell: bash
+        env:
+          ECHO_CI_ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+          ECHO_CI_ARTIFACT_SHA256: ${{ secrets.ECHO_CI_ARTIFACT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "$ECHO_CI_ARTIFACT_KEY" || { echo 'Required proving artifact key unavailable' >&2; exit 1; }
+          test -n "$ECHO_CI_ARTIFACT_SHA256" || { echo 'Required independently verified artifact digest unavailable' >&2; exit 1; }
+          printf '%s  %s\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
+          python3 scripts/extract-trusted-ci-artifacts.py
+          test -s build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey
+          test -s build/v3-timestamp-fixed/verification_key.json
+          test -s build/v4-geographic-bound/setup/EchoGeographicBoundV4_final.zkey
+          test -s build/v4-geographic-bound/setup/verification_key.json
+      - name: Run real-proof atomic rollback and replay regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx hardhat test test/echo-v4-execution-atomic-rollback.js test/echo-v4-atomic-rollback-retry.js
