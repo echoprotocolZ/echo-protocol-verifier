@@ -50,6 +50,24 @@ describe("ECHO real-proof CI isolation boundary (static)", function () {
     assert.ok(job.includes("test/echo-v4-execution-atomic-rollback.js"));
     assert.ok(job.includes("test/echo-v4-atomic-rollback-retry.js"));
   });
+  it("requires digest pinning and bounded extraction in both protected jobs", function () {
+    const secretJobs = workflow.split(/^  (?=[a-z][a-z0-9-]*:)/m).slice(1)
+      .filter(section => section.includes("secrets.ECHO_CI_ARTIFACT_KEY"));
+    assert.equal(secretJobs.length, 2);
+    for (const job of secretJobs) {
+      assert.ok(job.includes("secrets.ECHO_CI_ARTIFACT_SHA256"), "Missing trusted digest secret");
+      assert.ok(job.includes("sha256sum --check --status"), "Missing digest verification");
+      assert.ok(job.includes("python3 scripts/extract-trusted-ci-artifacts.py"), "Missing bounded extractor");
+      assert.ok(!job.includes("tar -xz -f -"), "Unsafe direct tar extraction remains");
+      assert.ok(job.indexOf("sha256sum --check --status") < job.indexOf("python3 scripts/extract-trusted-ci-artifacts.py"),
+        "Extraction must follow digest verification");
+    }
+    const extractor = fs.readFileSync("scripts/extract-trusted-ci-artifacts.py", "utf8");
+    assert.ok(extractor.includes("member.isfile() and not member.isdir()") ||
+      extractor.includes("not member.isfile() and not member.isdir()"));
+    assert.ok(extractor.includes("dest.is_relative_to(ROOT / \"build\")"));
+    assert.ok(extractor.includes("member.size > 512 * 1024 * 1024"));
+  });
   it("does not claim a V4 circuit compile is a real Groth16 proof", function () {
     assert.match(workflow, /A successful build is NOT evidence of a valid Groth16 proof/);
     assert.match(workflow, /no proof generated/);
