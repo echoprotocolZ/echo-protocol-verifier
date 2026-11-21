@@ -121,10 +121,8 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$ECHO_CI_ARTIFACT_SHA256" || { echo 'Required independently verified artifact digest unavailable' >&2; exit 1; }
-          printf '%s  %s\\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
-          openssl enc -d -aes-256-cbc -pbkdf2 \
-            -in .ci/echo-ci-artifacts.tar.gz.enc \
-            -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
+          printf '%s  %s\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
+          python3 scripts/extract-trusted-ci-artifacts.py
           test -f build/v2/verification_key.json
           test -f build/v3-timestamp-fixed/verification_key.json
           test -f build/v4-geographic-bound/verification_key.json
@@ -175,8 +173,8 @@ jobs:
           set -euo pipefail
           test -n "$ECHO_CI_ARTIFACT_KEY" || { echo 'Required proving artifact key unavailable' >&2; exit 1; }
           test -n "$ECHO_CI_ARTIFACT_SHA256" || { echo 'Required independently verified artifact digest unavailable' >&2; exit 1; }
-          printf '%s  %s\\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
-          openssl enc -d -aes-256-cbc -pbkdf2 -in .ci/echo-ci-artifacts.tar.gz.enc -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
+          printf '%s  %s\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
+          python3 scripts/extract-trusted-ci-artifacts.py
           test -s build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey
           test -s build/v3-timestamp-fixed/verification_key.json
           test -s build/v4-geographic-bound/setup/EchoGeographicBoundV4_final.zkey
