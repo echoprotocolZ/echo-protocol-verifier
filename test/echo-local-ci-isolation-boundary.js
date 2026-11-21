@@ -17,20 +17,34 @@ describe("ECHO real-proof CI isolation boundary (static)", function () {
       assert.ok(manifest.excluded_files.includes(file), `Proof-dependent test not excluded: ${file}`);
     }
   });
-  it("does not expose the encrypted artifact secret to pull-request jobs", function () {
-    const diagnostic = workflow.split(/^  full-suite-diagnostic:/m)[1];
-    assert.ok(diagnostic, "Full-suite diagnostic job missing");
-    assert.match(diagnostic, /github\.event_name != 'pull_request'/);
-    assert.match(diagnostic, /ECHO_CI_ARTIFACT_KEY/);
-    const otherJobs = workflow.split(/^  full-suite-diagnostic:/m)[0];
-    assert.doesNotMatch(otherJobs, /secrets\.ECHO_CI_ARTIFACT_KEY/);
+  it("does not expose proving-artifact secrets to pull-request jobs", function () {
+    const jobSections = workflow.split(/^  (?=[a-z][a-z0-9-]*:)/m).slice(1);
+    const secretJobs = jobSections.filter(section => section.includes("secrets.ECHO_CI_ARTIFACT_KEY"));
+    assert.equal(secretJobs.length, 2, "Expected exactly two protected secret-consuming jobs");
+    for (const section of secretJobs) {
+      const header = section.split("\n", 1)[0].trim();
+      assert.ok(
+        header === "full-suite-diagnostic:" || header === "trusted-real-proof-rollback:",
+        "Secret exposed in unexpected job: " + header
+      );
+      const condition = section.split("\n").find(line => line.trim().startsWith("if:"));
+      assert.ok(condition, "Secret-consuming job must have an explicit gate");
+      assert.ok(condition.includes("github.ref == 'refs/heads/security/v4-zero-trust-hardening'"));
+      if (header === "trusted-real-proof-rollback:") {
+        assert.ok(condition.includes("github.event_name == 'workflow_dispatch'"));
+      } else {
+        assert.ok(condition.includes("github.event_name != 'pull_request'"));
+      }
+    }
   });
   it("gates the new secret-backed job to trusted manual dispatch only", function () {
     const marker = "  trusted-real-proof-rollback:";
     assert.ok(workflow.includes(marker), "Trusted real-proof job missing");
     const job = workflow.split(marker)[1];
-    assert.ok(job.includes("github.event_name == 'workflow_dispatch'"));
-    assert.ok(job.includes("github.ref == 'refs/heads/security/v4-zero-trust-hardening'"));
+    const condition = job.split("\n").find(line => line.trim().startsWith("if:"));
+    assert.ok(condition);
+    assert.ok(condition.includes("github.event_name == 'workflow_dispatch'"));
+    assert.ok(condition.includes("github.ref == 'refs/heads/security/v4-zero-trust-hardening'"));
     assert.ok(job.includes("persist-credentials: false"));
     assert.ok(job.includes("ECHO_CI_ARTIFACT_KEY"));
     assert.ok(job.includes("test/echo-v4-execution-atomic-rollback.js"));
