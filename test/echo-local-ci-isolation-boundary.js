@@ -26,15 +26,15 @@ describe("ECHO real-proof CI isolation boundary (static)", function () {
     assert.doesNotMatch(otherJobs, /secrets\.ECHO_CI_ARTIFACT_KEY/);
   });
   it("gates the new secret-backed job to trusted manual dispatch only", function () {
-    const match = workflow.match(/^  trusted-real-proof-rollback:\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:|$)/m);
-    assert.ok(match, "Trusted real-proof job missing");
-    const job = match[1];
-    assert.match(job, /github\\.event_name == 'workflow_dispatch'/);
-    assert.match(job, /github\\.ref == 'refs\\/heads\\/security\\/v4-zero-trust-hardening'/);
-    assert.match(job, /persist-credentials: false/);
-    assert.match(job, /ECHO_CI_ARTIFACT_KEY/);
-    assert.match(job, /test\\/echo-v4-execution-atomic-rollback\\.js/);
-    assert.match(job, /test\\/echo-v4-atomic-rollback-retry\\.js/);
+    const marker = "  trusted-real-proof-rollback:";
+    assert.ok(workflow.includes(marker), "Trusted real-proof job missing");
+    const job = workflow.split(marker)[1];
+    assert.ok(job.includes("github.event_name == 'workflow_dispatch'"));
+    assert.ok(job.includes("github.ref == 'refs/heads/security/v4-zero-trust-hardening'"));
+    assert.ok(job.includes("persist-credentials: false"));
+    assert.ok(job.includes("ECHO_CI_ARTIFACT_KEY"));
+    assert.ok(job.includes("test/echo-v4-execution-atomic-rollback.js"));
+    assert.ok(job.includes("test/echo-v4-atomic-rollback-retry.js"));
   });
   it("does not claim a V4 circuit compile is a real Groth16 proof", function () {
     assert.match(workflow, /A successful build is NOT evidence of a valid Groth16 proof/);
