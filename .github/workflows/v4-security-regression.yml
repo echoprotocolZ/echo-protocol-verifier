@@ -117,8 +117,11 @@ jobs:
         shell: bash
         env:
           ECHO_CI_ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+          ECHO_CI_ARTIFACT_SHA256: ${{ secrets.ECHO_CI_ARTIFACT_SHA256 }}
         run: |
           set -euo pipefail
+          test -n "$ECHO_CI_ARTIFACT_SHA256" || { echo 'Required independently verified artifact digest unavailable' >&2; exit 1; }
+          printf '%s  %s\\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
           openssl enc -d -aes-256-cbc -pbkdf2 \
             -in .ci/echo-ci-artifacts.tar.gz.enc \
             -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
@@ -167,9 +170,12 @@ jobs:
         shell: bash
         env:
           ECHO_CI_ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+          ECHO_CI_ARTIFACT_SHA256: ${{ secrets.ECHO_CI_ARTIFACT_SHA256 }}
         run: |
           set -euo pipefail
           test -n "$ECHO_CI_ARTIFACT_KEY" || { echo 'Required proving artifact key unavailable' >&2; exit 1; }
+          test -n "$ECHO_CI_ARTIFACT_SHA256" || { echo 'Required independently verified artifact digest unavailable' >&2; exit 1; }
+          printf '%s  %s\\n' "$ECHO_CI_ARTIFACT_SHA256" '.ci/echo-ci-artifacts.tar.gz.enc' | sha256sum --check --status || { echo 'Encrypted artifact digest mismatch' >&2; exit 1; }
           openssl enc -d -aes-256-cbc -pbkdf2 -in .ci/echo-ci-artifacts.tar.gz.enc -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
           test -s build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey
           test -s build/v3-timestamp-fixed/verification_key.json
