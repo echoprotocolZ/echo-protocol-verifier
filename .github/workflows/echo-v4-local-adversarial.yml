@@ -6,6 +6,7 @@ on:
     paths:
       - 'contracts/test/EchoAtomicRollbackMocks.sol'
       - 'test/echo-v4-atomic-rollback.mock.local.js'
+      - 'test/echo-v3-authenticated-checkpoint-replay.local.js'
       - 'test/echo-v4-repeated-unauthorized-fencing.local.js'
       - 'test/echo-v4-bridge-unauthorized-atomic.local.js'
       - '.github/workflows/echo-v4-local-adversarial.yml'
@@ -24,4 +25,4 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Run local-only Hardhat security regressions
-        run: npx hardhat test --network hardhat test/echo-v4-repeated-unauthorized-fencing.local.js test/echo-v4-bridge-unauthorized-atomic.local.js test/echo-v4-atomic-rollback.mock.local.js
+        run: npx hardhat test --network hardhat test/echo-v4-repeated-unauthorized-fencing.local.js test/echo-v4-bridge-unauthorized-atomic.local.js test/echo-v4-atomic-rollback.mock.local.js test/echo-v3-authenticated-checkpoint-replay.local.js
