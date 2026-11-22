@@ -11,13 +11,14 @@ const groups = {
     "build/v3-timestamp-fixed/verification_key.json",
     "build/v3-timestamp-fixed/proof.json",
     "build/v3-timestamp-fixed/public.json",
-    "build/v3-timestamp-fixed/circuit_final.zkey"
+    "build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey"
   ],
   v4: [
-    "build/v4-geographic/verification_key.json",
-    "build/v4-geographic/proof.json",
-    "build/v4-geographic/public.json",
-    "build/v4-geographic/circuit_final.zkey"
+    "build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm",
+    "build/v4-geographic-bound/verification_key.json",
+    "build/v4-geographic-bound/proof.json",
+    "build/v4-geographic-bound/public.json",
+    "build/v4-geographic-bound/setup/EchoGeographicBoundV4_final.zkey"
   ]
 };
 let missing = 0;
