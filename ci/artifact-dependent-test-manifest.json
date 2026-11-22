@@ -11,6 +11,7 @@
     "test/echo-v3-real-groth16-valid-fixture.js",
     "test/echo-v3-real-proof.js",
     "test/echo-v3-timestamp-real-proof.js",
+    "test/echo-v3-v4-solidity-positive-groth16.local.js",
     "test/echo-v4-admin-callback-boundary.js",
     "test/echo-v4-atomic-rollback-retry.js",
     "test/echo-v4-contract-owner-cross-function.js",
