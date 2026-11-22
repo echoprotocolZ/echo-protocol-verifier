@@ -1,15 +1,43 @@
 const fs = require("fs");
 const hre = require("hardhat");
 const { loadRecords } = require("./amoy-deployment-records");
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function retry(label, fn) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try { return await fn(); } catch (error) {
+      if (!/timeout|rate.limit|429|503|free plan|network error/i.test(error.message || "") || attempt === 5) throw error;
+      const delay = attempt * 3000;
+      console.log("RPC RETRY:", label, "attempt", attempt, "waiting", delay, "ms");
+      await sleep(delay);
+    }
+  }
+}
+
 
 async function main() {
   const r = loadRecords().contracts;
-  const [signer] = await hre.ethers.getSigners();
+  const bootstrapPath = "deployments/amoy/echo-v4-bootstrapped-account.json";
+  if (!fs.existsSync(bootstrapPath)) throw new Error("Missing bootstrapped account deployment record");
+  const bootstrap = JSON.parse(fs.readFileSync(bootstrapPath, "utf8"));
+  if (bootstrap.chainId !== 80002 || !hre.ethers.isAddress(bootstrap.address) ||
+      bootstrap.authorizationBridge.toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
+    throw new Error("Bootstrapped account record invalid");
+  const accountAddress = hre.ethers.getAddress(bootstrap.address);
+  console.log("RPC endpoint:", process.env.AMOY_RPC_URL ? "AMOY_RPC_URL (custom)" : "default dRPC");
+  console.log("STEP: reading account bridge");
+  const account = await hre.ethers.getContractAt("EchoSmartAccountV4Bootstrapped", accountAddress);
+  if ((await retry("account authorizationBridge", () => account.authorizationBridge())).toLowerCase() !== r.EchoAuthorizationBridgeV4.toLowerCase())
+    throw new Error("New account bridge mismatch");
+  console.log("STEP: reading account nonce");
+  const accountNonce = await retry("account nonce", () => account.nonce());
+  console.log("STEP: loading signer");
+  const [signer] = await retry("getSigners", () => hre.ethers.getSigners());
 
   const expected =
     "0xbD2dEf17C60C3f6C2dA6eE812F948f4B53f2f803";
 
-  const network = await hre.ethers.provider.getNetwork();
+  console.log("STEP: checking network");
+  const network = await retry("getNetwork", () => hre.ethers.provider.getNetwork());
 
   if (network.chainId !== 80002n) {
     throw new Error("Polygon Amoy required");
@@ -36,7 +64,7 @@ async function main() {
   );
 
   const checkpoint = {
-    account: r.EchoSmartAccountV4,
+    account: accountAddress,
     delegatee: expected,
     zoneHash:
       "0x779dbc9b263b67e52c604312d097e324ce4c75c90cfa2185d4be0ce5b31fcb76",
@@ -50,6 +78,7 @@ async function main() {
     nonce: BigInt(input.nonce)
   };
 
+  if (BigInt(checkpoint.nonce) !== accountNonce || BigInt(signals[11]) !== accountNonce) throw new Error("Proof/checkpoint nonce mismatch");
   const registry = new hre.ethers.Contract(
     r.EchoAttestationRegistryV3,
     [
@@ -58,7 +87,8 @@ async function main() {
     signer
   );
 
-  const digest = await registry.checkpointDigest(checkpoint);
+  console.log("STEP: reading checkpoint digest");
+  const digest = await retry("checkpoint digest", () => registry.checkpointDigest(checkpoint));
 
   // Sign the exact digest expected by the deployed registry.
   // SigningMessage would add an Ethereum prefix, so we use
@@ -100,6 +130,7 @@ async function main() {
     throw new Error("Checkpoint signature verification failed");
   }
 
+  console.log("Checkpoint account:", accountAddress);
   fs.writeFileSync(
     `${dir}/v4-signed-checkpoint.json`,
     JSON.stringify({

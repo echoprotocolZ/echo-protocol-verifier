@@ -2,14 +2,12 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const assert = require("node:assert/strict");
 
-describe("ECHO V4 ownership security", function () {
+describe("ECHO V4 ownership zero-trust security", function () {
   let owner, newOwner, outsider, account;
 
   beforeEach(async function () {
     [owner, newOwner, outsider] = await ethers.getSigners();
 
-    // Deployed code used only for constructor validation.
-    // These tests do not exercise bridge authorization.
     const registry = await (
       await ethers.getContractFactory("EchoAttestationRegistryV3")
     ).deploy();
@@ -19,86 +17,73 @@ describe("ECHO V4 ownership security", function () {
     ).deploy(owner.address, ethers.ZeroAddress, registry.target);
   });
 
-  it("rejects unauthorized ownership transfers", async function () {
-    await assert.rejects(account.connect(outsider).transferOwnership(outsider.address), /Unauthorized/);
+  async function expectUnchanged() {
+    expect(await account.owner()).to.equal(owner.address);
+    expect(await account.pendingOwner()).to.equal(ethers.ZeroAddress);
+    expect(await account.entryPoint()).to.equal(ethers.ZeroAddress);
+  }
+
+  it("rejects outsider ownership transfers", async function () {
+    await assert.rejects(
+      account.connect(outsider).transferOwnership(outsider.address),
+      /Unauthorized/
+    );
+    await expectUnchanged();
   });
 
   it("rejects zero-address ownership transfers", async function () {
-    await assert.rejects(account.connect(owner).transferOwnership(ethers.ZeroAddress), /Unauthorized/);
+    await assert.rejects(
+      account.connect(owner).transferOwnership(ethers.ZeroAddress),
+      /Unauthorized/
+    );
+    await expectUnchanged();
   });
 
-  it("transfers ownership to the new owner", async function () {
-    await account.connect(owner).transferOwnership(newOwner.address);
-    expect(await account.owner()).to.equal(owner.address);
-    expect(await account.pendingOwner()).to.equal(newOwner.address);
-
-    await account.connect(newOwner).acceptOwnership();
-    expect(await account.owner()).to.equal(newOwner.address);
-    expect(await account.pendingOwner()).to.equal(ethers.ZeroAddress);
+  it("rejects owner-initiated ownership transfers", async function () {
+    await assert.rejects(
+      account.connect(owner).transferOwnership(newOwner.address),
+      /Unauthorized/
+    );
+    await expectUnchanged();
   });
 
-  it("removes previous-owner entry-point permissions", async function () {
-    await account.connect(owner).transferOwnership(newOwner.address);
-
-    await account.connect(owner).setEntryPoint(outsider.address);
-    await account.connect(newOwner).acceptOwnership();
-
+  it("rejects entry-point changes by the owner", async function () {
     await assert.rejects(
       account.connect(owner).setEntryPoint(outsider.address),
       /Unauthorized/
     );
-
-    await account.connect(newOwner).setEntryPoint(outsider.address);
-    expect(await account.entryPoint()).to.equal(outsider.address);
+    await expectUnchanged();
   });
 
-  it("preserves the entry point during ownership transfer", async function () {
-    await account.connect(owner).setEntryPoint(outsider.address);
-    await account.connect(owner).transferOwnership(newOwner.address);
-    await account.connect(newOwner).acceptOwnership();
-
-    expect(await account.entryPoint()).to.equal(outsider.address);
+  it("rejects entry-point changes by outsiders", async function () {
+    await assert.rejects(
+      account.connect(outsider).setEntryPoint(outsider.address),
+      /Unauthorized/
+    );
+    await expectUnchanged();
   });
 
-  it("rejects unauthorized ownership acceptance", async function () {
-    await account.connect(owner).transferOwnership(newOwner.address);
+  it("rejects ownership acceptance by outsiders", async function () {
     await assert.rejects(
       account.connect(outsider).acceptOwnership(),
       /Unauthorized/
     );
-    expect(await account.owner()).to.equal(owner.address);
+    await expectUnchanged();
   });
 
-  it("invalidates a replaced pending owner", async function () {
-    await account.connect(owner).transferOwnership(newOwner.address);
-    await account.connect(owner).transferOwnership(outsider.address);
-
+  it("rejects ownership acceptance by proposed new owners", async function () {
     await assert.rejects(
       account.connect(newOwner).acceptOwnership(),
       /Unauthorized/
     );
-
-    expect(await account.pendingOwner()).to.equal(outsider.address);
-    await account.connect(outsider).acceptOwnership();
-    expect(await account.owner()).to.equal(outsider.address);
+    await expectUnchanged();
   });
 
-
-  it("allows only the new owner to rotate the entry point", async function () {
-    await account.connect(owner).setEntryPoint(owner.address);
-
-    await account.connect(owner).transferOwnership(newOwner.address);
-    await account.connect(newOwner).acceptOwnership();
-
+  it("rejects entry-point rotation by proposed new owners", async function () {
     await assert.rejects(
-      account.connect(owner).setEntryPoint(owner.address),
+      account.connect(newOwner).setEntryPoint(newOwner.address),
       /Unauthorized/
     );
-
-    await account.connect(newOwner).setEntryPoint(outsider.address);
-
-    expect(await account.entryPoint()).to.equal(outsider.address);
-    expect(await account.owner()).to.equal(newOwner.address);
+    await expectUnchanged();
   });
-
 });

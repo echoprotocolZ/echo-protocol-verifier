@@ -1,0 +1,100 @@
+name: V4 Security Regression
+on:
+  push:
+    branches:
+      - security/v4-zero-trust-hardening
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v4-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx hardhat compile
+      - name: EGP-1 simulation
+        run: node scripts/egp1-velocity-simulation.js
+      - name: V4 security regressions
+        run: npx hardhat test test/echo-v4-admin-intent.js test/echo-v4-account-admin-intent.js test/echo-v4-admin-self-call-block.js test/echo-v4-admin-fail-closed-invariants.js test/echo-v4-zero-trust-hardening.js test/echo-v4-two-step-ownership.js
+
+  artifact-independent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx hardhat compile
+      - name: Generate V3 circuit metadata for public-signal tests
+        run: node scripts/build-v3-test-artifacts.js
+      - name: Run tests without external proving keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find test -maxdepth 1 -name '*.js' -type f | sort | grep -Ev '/(echo-v3-real-authorization-integration|echo-v3-real-proof|echo-v3-timestamp-real-proof|echo-v4-gateway-error-security|echo-v4-geographic-gateway|echo-v4-real-dual-proof-integration|echo-v4-solidity-proof|echo-z-artifact-integrity|echo-z-positive-initialization|full-flow|real-proof)[.]js$')
+          echo "Running ${#tests[@]} artifact-independent test files"
+          npx hardhat test "${tests[@]}"
+
+  full-suite-diagnostic:
+    # Secrets are unavailable to untrusted pull-request workflows.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/security/v4-zero-trust-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx hardhat compile
+      - name: Generate disposable V3 test artifacts
+        run: node scripts/build-v3-test-artifacts.js
+      - name: Compile V2 and V4 witness circuits
+        shell: bash
+        run: |
+          mkdir -p build/v2 build/v4-geographic-bound
+          npx --no-install circom2 EchoAuthorizationVerifierV2.circom --wasm -l node_modules -o build/v2
+          npx --no-install circom2 circuits/v4/EchoGeographicBoundV4.circom --wasm -l node_modules -o build/v4-geographic-bound
+      - name: Check decryption secret
+        shell: bash
+        env:
+          ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+        run: |
+          test -n "$ARTIFACT_KEY" || { echo "Missing ECHO_CI_ARTIFACT_KEY"; exit 1; }
+      - name: Decrypt original proof artifacts
+        shell: bash
+        env:
+          ECHO_CI_ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+        run: |
+          set -euo pipefail
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in .ci/echo-ci-artifacts.tar.gz.enc \
+            -pass env:ECHO_CI_ARTIFACT_KEY | tar -xz -f -
+          test -f build/v2/verification_key.json
+          test -f build/v3-timestamp-fixed/verification_key.json
+          test -f build/v4-geographic-bound/verification_key.json
+      - name: Run complete suite and preserve failures
+        shell: bash
+        run: |
+          set -o pipefail
+          npx hardhat test 2>&1 | tee full-hardhat-results.log
+      - name: Upload diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-hardhat-results
+          path: full-hardhat-results.log
+          if-no-files-found: ignore

@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const assert = require("node:assert/strict");
 const { ethers } = require("hardhat");
 
 describe("ECHO V4 geographic administration security", function () {
@@ -51,46 +52,15 @@ describe("ECHO V4 geographic administration security", function () {
     ).deploy(owner.address, ethers.ZeroAddress, v4Bridge.target);
   });
 
-  it("allows the owner to configure an approved geographic zone", async function () {
+
+  it("rejects owner geographic configuration without proof", async function () {
     const data = policy.interface.encodeFunctionData(
       "setGeographicPolicy", [owner.address, zone]
     );
 
-    await account.executeGeographicAdministration(data);
-
-    const saved = await policy.getGeographicPolicy(
-      account.target, owner.address
-    );
-
-    expect(saved.enabled).to.equal(true);
-    expect(saved.zone.minLat).to.equal(BigInt(zone.minLat));
-  });
-
-  it("rejects unauthorized geographic administration", async function () {
-    const data = policy.interface.encodeFunctionData(
-      "setGeographicPolicy", [owner.address, zone]
-    );
-
-    let rejected = false;
-    try {
-      await (await account.connect(outsider).executeGeographicAdministration(data)).wait();
-    } catch (error) {
-      rejected = true;
-    }
-    expect(rejected).to.equal(true);
-  });
-
-  it("allows the owner to disable a geographic policy", async function () {
-    await account.executeGeographicAdministration(
-      policy.interface.encodeFunctionData(
-        "setGeographicPolicy", [owner.address, zone]
-      )
-    );
-
-    await account.executeGeographicAdministration(
-      policy.interface.encodeFunctionData(
-        "disableGeographicPolicy", [owner.address]
-      )
+    await assert.rejects(
+      account.connect(owner).executeGeographicAdministration(data),
+      /Unauthorized/
     );
 
     const saved = await policy.getGeographicPolicy(
@@ -98,6 +68,33 @@ describe("ECHO V4 geographic administration security", function () {
     );
 
     expect(saved.enabled).to.equal(false);
+    expect(await account.nonce()).to.equal(0n);
+  });
+
+  it("rejects outsider geographic configuration", async function () {
+    const data = policy.interface.encodeFunctionData(
+      "setGeographicPolicy", [owner.address, zone]
+    );
+
+    await assert.rejects(
+      account.connect(outsider).executeGeographicAdministration(data),
+      /Unauthorized/
+    );
+
+    expect(await account.nonce()).to.equal(0n);
+  });
+
+  it("rejects owner geographic policy disabling", async function () {
+    const data = policy.interface.encodeFunctionData(
+      "disableGeographicPolicy", [owner.address]
+    );
+
+    await assert.rejects(
+      account.connect(owner).executeGeographicAdministration(data),
+      /Unauthorized/
+    );
+
+    expect(await account.nonce()).to.equal(0n);
   });
 
   it("rejects unsupported geographic administration calls", async function () {
@@ -105,12 +102,11 @@ describe("ECHO V4 geographic administration security", function () {
       "getGeographicPolicy", [account.target, owner.address]
     );
 
-    let rejected = false;
-    try {
-      await (await account.executeGeographicAdministration(data)).wait();
-    } catch (error) {
-      rejected = true;
-    }
-    expect(rejected).to.equal(true);
+    await assert.rejects(
+      account.connect(owner).executeGeographicAdministration(data),
+      /Unauthorized/
+    );
+
+    expect(await account.nonce()).to.equal(0n);
   });
 });
