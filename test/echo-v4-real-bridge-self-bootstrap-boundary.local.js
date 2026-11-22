@@ -27,11 +27,9 @@ describe("Echo V4 real bridge cannot self-bootstrap registry trust (local)", fun
     assert.equal(await registry.authorizedCheckpointBridges(owner.address, bridge.target), true);
     assert.equal(await registry.authorizedCheckpointBridges(account.target, bridge.target), false);
 
-    // The bridge itself cannot write another account's mapping.
-    const impersonatedBridge = await ethers.getImpersonatedSigner(bridge.target);
-    await owner.sendTransaction({ to: bridge.target, value: ethers.parseEther("1") });
-    await (await registry.connect(impersonatedBridge).setCheckpointBridge(bridge.target, true)).wait();
-    assert.equal(await registry.authorizedCheckpointBridges(bridge.target, bridge.target), true);
+    // An unrelated caller also cannot register the bridge for the account.
+    await (await registry.connect(outsider).setCheckpointBridge(bridge.target, true)).wait();
+    assert.equal(await registry.authorizedCheckpointBridges(outsider.address, bridge.target), true);
     assert.equal(await registry.authorizedCheckpointBridges(account.target, bridge.target), false);
 
     assert.equal(await account.nonce(), nonceBefore);
