@@ -12,7 +12,7 @@ import re
 import sys
 
 EXCLUDED = re.compile(
-    r"(full-flow|real-proof|"
+    r"(full-flow|real-proof|echo-v3-v4-solidity-positive-groth16|"
     r"echo-v3-real-authorization-integration|"
     r"echo-v4-real-coordinated-dual-proof|"
     r"echo-v4-solidity-proof|"
