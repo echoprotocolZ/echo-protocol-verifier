@@ -56,7 +56,12 @@ contract EchoSmartAccountV4Bootstrap is EchoSmartAccountV4 {
     /// @notice Exact scoped operation; no generic admin call or arbitrary bridge.
     /// @dev Permission comes solely from an independent cryptographic proof
     ///      verifier. Neither owner nor bridge may bypass that verification.
-    /// @dev Block proof-authorized execution while registration calls the registry.\n    function _isProofAdministrationLocked() internal view override returns (bool) {\n        return registrationLock != 0;\n    }\n\n    function registerImmutableBridge(
+    /// @dev Block proof-authorized execution while registration calls the registry.
+    function _isProofAdministrationLocked() internal view override returns (bool) {
+        return registrationLock != 0;
+    }
+
+    function registerImmutableBridge(
         bool authorized,
         uint256 deadline,
         bytes calldata proof
