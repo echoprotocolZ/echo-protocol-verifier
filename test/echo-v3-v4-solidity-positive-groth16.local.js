@@ -7,7 +7,7 @@ describe("ECHO V3/V4 actual Solidity Groth16 positive proof equivalence (local)"
     assert.equal(network.name, "hardhat", "LOCAL ONLY");
     for (const [label, folder, contractName, count] of [
       ["V3", "build/v3-timestamp-fixed", "EchoAuthorizationVerifierV3", 20],
-      ["V4", "build/v4-geographic", "EchoGeographicBoundVerifierV4", 5]
+      ["V4", "build/v4-geographic-bound", "EchoGeographicBoundVerifierV4", 5]
     ]) {
       const paths = ["proof.json", "public.json"].map(file => folder + "/" + file);
       for (const file of paths) assert.ok(fs.existsSync(file), label + " missing " + file);
