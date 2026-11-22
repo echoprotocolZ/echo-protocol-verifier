@@ -1,0 +1,24 @@
+name: Echo Groth16 positive-proof artifact readiness
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - security/nonce1-authorization-preflight-2026-11
+    paths:
+      - 'scripts/check-groth16-positive-artifacts.ci.js'
+      - '.github/workflows/echo-groth16-artifact-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  artifact-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify required V3 and V4 positive-proof files exist
+        run: node scripts/check-groth16-positive-artifacts.ci.js
+      - name: Explain gate
+        if: failure()
+        run: |
+          echo "Missing proof files are a reproducibility blocker, not evidence that a cryptographic verifier accepted an invalid proof."
+          echo "Do not upload private toxic-waste ceremony material or unreviewed proving keys to fix this check."
