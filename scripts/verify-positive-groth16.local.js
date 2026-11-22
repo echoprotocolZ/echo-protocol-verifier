@@ -5,7 +5,7 @@ const path = require("node:path");
 const snarkjs = require("snarkjs");
 const specs = [
   ["V3", "build/v3-timestamp-fixed", 20],
-  ["V4", "build/v4-geographic", 5]
+  ["V4", "build/v4-geographic-bound", 5]
 ];
 (async () => {
   let failures = 0;
