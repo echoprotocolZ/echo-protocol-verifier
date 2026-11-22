@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "./EchoSmartAccountV4.sol";
+import "../EchoSmartAccountV4.sol";
+import "../EchoV4AdminIntent.sol";
 
 interface IEchoBootstrapProofVerifier {
     /// @dev MUST independently authenticate the exact canonical intent bytes.
