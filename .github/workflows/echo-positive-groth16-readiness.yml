@@ -1,0 +1,16 @@
+name: Echo positive Groth16 readiness gate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  positive-proof-prerequisites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Fail closed unless positive proof prerequisites exist
+        run: node scripts/check-positive-groth16-prerequisites.local.js
