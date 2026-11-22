@@ -65,4 +65,38 @@ describe("Echo V4 scoped bootstrap registration (LOCAL MOCK ONLY)", function () 
     await assert.rejects(async () => (await x.account.connect(x.owner).executeAdministration(x.registry.target, "0x")).wait());
     assert.equal(await x.account.registrationNonce(), 0n);
   });
+  it("rejects a changed deadline without consuming nonce", async function () {
+    const x = await setup();
+    const deadline = BigInt((await ethers.provider.getBlock("latest")).timestamp + 3600);
+    await configure(x, true, deadline, 0n);
+    await assert.rejects(async () =>
+      (await x.account.registerImmutableBridge(true, deadline + 1n, "0x")).wait()
+    );
+    assert.equal(await x.account.registrationNonce(), 0n);
+    assert.equal(await x.registry.authorizedCheckpointBridges(x.account.target, x.bridge.target), false);
+  });
+  it("rejects authorization intended for a different account", async function () {
+    const x = await setup();
+    const other = await (await ethers.getContractFactory("EchoSmartAccountV4Bootstrap")).deploy(
+      x.outsider.address, ethers.ZeroAddress, x.bridge.target, x.registry.target, x.verifier.target
+    );
+    await other.waitForDeployment();
+    const deadline = BigInt((await ethers.provider.getBlock("latest")).timestamp + 3600);
+    await configure(x, true, deadline, 0n);
+    await assert.rejects(async () =>
+      (await other.registerImmutableBridge(true, deadline, "0x")).wait()
+    );
+    assert.equal(await other.registrationNonce(), 0n);
+    assert.equal(await x.registry.authorizedCheckpointBridges(other.target, x.bridge.target), false);
+  });
+  it("allows an explicitly authorized revocation with a fresh nonce", async function () {
+    const x = await setup();
+    const deadline = BigInt((await ethers.provider.getBlock("latest")).timestamp + 3600);
+    await configure(x, true, deadline, 0n);
+    await (await x.account.registerImmutableBridge(true, deadline, "0x")).wait();
+    await configure(x, false, deadline, 1n);
+    await (await x.account.registerImmutableBridge(false, deadline, "0x")).wait();
+    assert.equal(await x.account.registrationNonce(), 2n);
+    assert.equal(await x.registry.authorizedCheckpointBridges(x.account.target, x.bridge.target), false);
+  });
 });
