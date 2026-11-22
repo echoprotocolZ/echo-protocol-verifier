@@ -6,9 +6,9 @@ const required = [
   ["V3 proof", "build/v3-timestamp-fixed/proof.json"],
   ["V3 public signals", "build/v3-timestamp-fixed/public.json"],
   ["V3 verification key", "build/v3-timestamp-fixed/verification_key.json"],
-  ["V4 proof", "build/v4-geographic/proof.json"],
-  ["V4 public signals", "build/v4-geographic/public.json"],
-  ["V4 verification key", "build/v4-geographic/verification_key.json"]
+  ["V4 proof", "build/v4-geographic-bound/proof.json"],
+  ["V4 public signals", "build/v4-geographic-bound/public.json"],
+  ["V4 verification key", "build/v4-geographic-bound/verification_key.json"]
 ];
 let missing = 0;
 for (const [label, file] of required) {
