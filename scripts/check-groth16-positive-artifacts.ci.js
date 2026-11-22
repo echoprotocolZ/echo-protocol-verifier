@@ -1,48 +1,41 @@
 #!/usr/bin/env node
 "use strict";
-// Strict CI readiness gate. Never print proving-key contents.
+// Readiness checks MUST use the original recorded paths, not invented filenames.
+// Never output key contents, regenerate trusted setup, or deploy.
 const fs = require("node:fs");
-const path = require("node:path");
 const crypto = require("node:crypto");
+const path = require("node:path");
+const manifest = require("../docs/ECHO_V3_ARTIFACT_MANIFEST.json");
 const root = process.cwd();
-const groups = {
-  v3: [
-    "build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_js/EchoAuthorizationVerifierV3.wasm",
-    "build/v3-timestamp-fixed/verification_key.json",
-    "build/v3-timestamp-fixed/proof.json",
-    "build/v3-timestamp-fixed/public.json",
-    "build/v3-timestamp-fixed/EchoAuthorizationVerifierV3_final.zkey"
-  ],
-  v4: [
-    "build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm",
-    "build/v4-geographic-bound/verification_key.json",
-    "build/v4-geographic-bound/proof.json",
-    "build/v4-geographic-bound/public.json",
-    "build/v4-geographic-bound/setup/EchoGeographicBoundV4_final.zkey"
-  ]
-};
-let missing = 0;
-for (const [group, files] of Object.entries(groups)) {
-  console.log("CHECK", group);
-  for (const file of files) {
-    const full = path.resolve(root, file);
-    if (!full.startsWith(root + path.sep)) throw new Error("unsafe path");
-    if (!fs.existsSync(full) || !fs.statSync(full).isFile() || fs.statSync(full).size === 0) {
-      console.log("MISSING_OR_EMPTY", file);
-      missing++;
-      continue;
-    }
-    const hash = crypto.createHash("sha256").update(fs.readFileSync(full)).digest("hex");
-    console.log("PRESENT", file, "bytes="+fs.statSync(full).size, "sha256="+hash);
-    if (file.endsWith(".json")) {
-      try { JSON.parse(fs.readFileSync(full, "utf8")); }
-      catch { console.log("INVALID_JSON", file); missing++; }
-    }
+const required = [
+  ...["provingKey","verificationKey","witnessWasm","publicSignals","proof"].map(k => ({
+    label: "V3/"+k, ...manifest.artifacts[k]
+  })),
+  {label:"V4/provingKey",path:"build/v4-geographic-bound/setup/EchoGeographicBoundV4_final.zkey"},
+  {label:"V4/verificationKey",path:"build/v4-geographic-bound/setup/verification_key.json"},
+  {label:"V4/witnessWasm",path:"build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm"}
+];
+let missing=0, mismatched=0;
+for(const item of required){
+  const absolute=path.resolve(root,item.path);
+  if(!absolute.startsWith(root+path.sep)) throw Error("Unsafe artifact path");
+  if(!fs.existsSync(absolute) || !fs.statSync(absolute).isFile() || fs.statSync(absolute).size===0){
+    console.log("MISSING_OR_EMPTY",item.label,item.path); missing++;continue;
+  }
+  const bytes=fs.readFileSync(absolute);
+  const digest=crypto.createHash("sha256").update(bytes).digest("hex");
+  console.log("PRESENT",item.label,item.path,"bytes="+bytes.length,"sha256="+digest);
+  if(item.sha256 && item.sha256!==digest){
+    console.error("HASH_MISMATCH",item.label);mismatched++;
+  }
+  if(item.path.endsWith(".json")){
+    try{JSON.parse(bytes.toString("utf8"))}catch{console.error("INVALID_JSON",item.label);mismatched++}
   }
 }
-if (missing) {
-  console.error("FAIL: "+missing+" required artifact(s) absent, empty, or invalid. Positive Groth16 CI cannot be claimed reproducible.");
-  process.exitCode = 1;
-} else {
-  console.log("ARTIFACT FILE READINESS PASSED. Cryptographic proof verification and trusted-setup provenance remain UNVERIFIED.");
+if(missing||mismatched){
+  console.error("FAIL: missing="+missing+" invalid_or_mismatched="+mismatched);
+  console.error("Retrieve original development artifacts from an approved secure archive. Never fabricate a new setup to satisfy this gate.");
+  process.exitCode=1;
+}else{
+  console.log("FILE/HASH READINESS PASSED; this alone does not establish proof validity or production ceremony security.");
 }
