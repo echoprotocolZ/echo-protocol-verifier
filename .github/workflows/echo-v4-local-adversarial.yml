@@ -18,6 +18,9 @@ on:
       - 'test/echo-v4-bridge-bootstrap-fail-closed.local.js'
       - 'test/echo-v4-real-bridge-self-bootstrap-boundary.local.js'
       - 'contracts/test/EchoLocalExecutionMocks.sol'
+      - 'test/echo-v4-bootstrap-registration.mock.local.js'
+      - 'contracts/security/EchoSmartAccountV4Bootstrap.sol'
+      - 'contracts/test/EchoBootstrapVerifierMock.sol'
       - '.github/workflows/echo-v4-local-adversarial.yml'
   workflow_dispatch:
 permissions:
