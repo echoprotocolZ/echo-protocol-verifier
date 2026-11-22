@@ -1,0 +1,25 @@
+name: Echo V4 local adversarial regression
+on:
+  push:
+    branches:
+      - security/nonce1-authorization-preflight-2026-11
+    paths:
+      - 'test/echo-v4-repeated-unauthorized-fencing.local.js'
+      - 'test/echo-v4-bridge-unauthorized-atomic.local.js'
+      - '.github/workflows/echo-v4-local-adversarial.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-adversarial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Run local-only Hardhat security regressions
+        run: npx hardhat test --network hardhat test/echo-v4-repeated-unauthorized-fencing.local.js test/echo-v4-bridge-unauthorized-atomic.local.js
