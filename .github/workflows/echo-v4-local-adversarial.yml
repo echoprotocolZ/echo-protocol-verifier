@@ -14,6 +14,8 @@ on:
       - 'test/echo-v4-real-registry-outsider-boundary.local.js'
       - 'test/echo-v4-repeated-unauthorized-fencing.local.js'
       - 'test/echo-v4-bridge-unauthorized-atomic.local.js'
+      - 'test/echo-v4-local-proof-execution-registration-boundary.js'
+      - 'contracts/test/EchoLocalExecutionMocks.sol'
       - '.github/workflows/echo-v4-local-adversarial.yml'
   workflow_dispatch:
 permissions:
@@ -32,4 +34,4 @@ jobs:
       - name: Inventory proof artifacts without exposing key contents
         run: node scripts/inventory-groth16-artifacts.local.js
       - name: Run local-only Hardhat security regressions
-        run: npx hardhat test --network hardhat test/echo-v4-repeated-unauthorized-fencing.local.js test/echo-v4-bridge-unauthorized-atomic.local.js test/echo-v4-atomic-rollback.mock.local.js test/echo-v3-authenticated-checkpoint-replay.local.js test/echo-v4-real-registry-outsider-boundary.local.js test/echo-v4-real-registry-atomic-rollback.stubbed-proof.local.js test/echo-v3-v4-real-groth16-negative-controls.local.js
+        run: npx hardhat test --network hardhat test/echo-v4-repeated-unauthorized-fencing.local.js test/echo-v4-bridge-unauthorized-atomic.local.js test/echo-v4-atomic-rollback.mock.local.js test/echo-v3-authenticated-checkpoint-replay.local.js test/echo-v4-real-registry-outsider-boundary.local.js test/echo-v4-real-registry-atomic-rollback.stubbed-proof.local.js test/echo-v3-v4-real-groth16-negative-controls.local.js test/echo-v4-local-proof-execution-registration-boundary.js
