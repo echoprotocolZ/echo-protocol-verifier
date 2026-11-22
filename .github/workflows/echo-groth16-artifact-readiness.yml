@@ -1,20 +1,67 @@
 name: Echo Groth16 positive-proof artifact readiness
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - security/nonce1-authorization-preflight-2026-11
-    paths:
-      - 'scripts/check-groth16-positive-artifacts.ci.js'
-      - '.github/workflows/echo-groth16-artifact-readiness.yml'
 permissions:
   contents: read
 jobs:
   artifact-readiness:
+    if: github.ref == 'refs/heads/security/nonce1-authorization-preflight-2026-11'
+    environment: echo-proof-artifact-readiness
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Restore only approved development artifact paths
+        shell: bash
+        env:
+          ECHO_CI_ARTIFACT_KEY: ${{ secrets.ECHO_CI_ARTIFACT_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$ECHO_CI_ARTIFACT_KEY" || { echo 'Missing archive decryption secret'; exit 1; }
+          archive=$(mktemp)
+          trap 'rm -f "$archive"' EXIT
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in .ci/echo-ci-artifacts.tar.gz.enc \
+            -out "$archive" -pass env:ECHO_CI_ARTIFACT_KEY
+          python3 - "$archive" <<'PY'
+          import json
+          from pathlib import Path
+          import shutil
+          import sys
+          import tarfile
+
+          manifest = json.loads(Path("docs/ECHO_V3_ARTIFACT_MANIFEST.json").read_text())
+          expected = {
+              manifest["artifacts"][name]["path"]
+              for name in ("provingKey", "verificationKey", "witnessWasm", "publicSignals", "proof")
+          }
+          expected.update({
+              "build/v4-geographic-bound/setup/EchoGeographicBoundV4_final.zkey",
+              "build/v4-geographic-bound/setup/verification_key.json",
+              "build/v4-geographic-bound/EchoGeographicBoundV4_js/EchoGeographicBoundV4.wasm",
+          })
+          restored = set()
+          with tarfile.open(sys.argv[1], "r:gz") as bundle:
+              for member in bundle:
+                  name = member.name.removeprefix("./")
+                  if name not in expected:
+                      continue
+                  if not member.isfile() or name in restored:
+                      raise SystemExit(f"Invalid or duplicate artifact: {name}")
+                  destination = Path(name)
+                  if any(part.is_symlink() for part in (destination, *destination.parents)):
+                      raise SystemExit(f"Unsafe artifact destination: {name}")
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  with bundle.extractfile(member) as source, destination.open("xb") as target:
+                      shutil.copyfileobj(source, target)
+                  restored.add(name)
+          missing = expected - restored
+          if missing:
+              raise SystemExit("Missing artifacts in encrypted archive: " + ", ".join(sorted(missing)))
+          PY
       - name: Verify required V3 and V4 positive-proof files exist
         run: node scripts/check-groth16-positive-artifacts.ci.js
       - name: Explain gate
