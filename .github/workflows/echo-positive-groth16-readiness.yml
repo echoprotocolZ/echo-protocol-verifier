@@ -12,5 +12,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - run: npm ci
       - name: Fail closed unless positive proof prerequisites exist
         run: node scripts/check-positive-groth16-prerequisites.local.js
+      - name: Verify genuine positive V3 and V4 Groth16 proofs
+        run: node scripts/verify-positive-groth16.local.js
