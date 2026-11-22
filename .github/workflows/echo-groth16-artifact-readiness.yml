@@ -1,0 +1,12 @@
+name: Echo Groth16 positive-proof artifact readiness
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  select-preflight-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the preflight workflow ref
+        run: |
+          echo 'Select security/nonce1-authorization-preflight-2026-11 when running this workflow.'
+          exit 1
