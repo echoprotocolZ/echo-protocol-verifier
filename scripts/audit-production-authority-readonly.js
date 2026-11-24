@@ -18,7 +18,11 @@ async function main() {
   for (const [label,[raw,methods]] of Object.entries(targets)) {
    const address = ethers.getAddress(raw.toLowerCase());
    const code = await p.getCode(address,block.number);
-   if (code === "0x") throw Error("Missing runtime: "+label);
+   if (code === "0x") {
+    report.contracts[label] = {address,status:"missing_runtime_at_snapshot"};
+    process.exitCode = 2;
+    continue;
+   }
    const row = report.contracts[label] = {address,runtimeHash:ethers.keccak256(code),runtimeBytes:(code.length-2)/2,reads:{}};
    const c = new ethers.Contract(address,methods.map(m=>"function "+m),p);
    for (const method of methods) {
