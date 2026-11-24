@@ -43,6 +43,23 @@ describe("Echo V4 delegation: verified fresh proof cannot cross account boundary
     assert.equal(BigInt(v3Signals[19]), BigInt(signed.checkpoint.timestamp));
     assert.equal(BigInt(v3Signals[11]), BigInt(signed.checkpoint.nonce));
     assert.equal(BigInt(v3Signals[11]), 1n);
+    // Historical Amoy signature: never substitute the local registry domain.
+    assert.equal(BigInt(v3Signals[5]) > 0n, true);
+    const domain = {
+      name: "EchoAttestationRegistryV3", version: "1",
+      chainId: 80002, verifyingContract: "0xbC1992863D95B916aA1CFe9140Bc901BEe3E43ca"
+    };
+    const types = { SignedCheckpoint: [
+      { name: "account", type: "address" },
+      { name: "delegatee", type: "address" },
+      { name: "zoneHash", type: "bytes32" },
+      { name: "checkpointCommitment", type: "bytes32" },
+      { name: "authorizationCommitment", type: "bytes32" },
+      { name: "timestamp", type: "uint64" },
+      { name: "nonce", type: "uint256" }
+    ] };
+    const recovered = ethers.verifyTypedData(domain, types, signed.checkpoint, signed.signature);
+    assert.equal(BigInt(recovered), BigInt(v3Signals[5]), "Historical signature must match proof validator");
     const geoPolicy = await (await ethers.getContractFactory("EchoGeographicPolicyRegistryV4")).deploy();
     const gateway = await (await ethers.getContractFactory("EchoGeographicProofGatewayV4")).deploy(geoVerifier.target, geoPolicy.target);
     const dual = await (await ethers.getContractFactory("EchoDualProofVerifierV4")).deploy(v3Bridge.target, gateway.target);
