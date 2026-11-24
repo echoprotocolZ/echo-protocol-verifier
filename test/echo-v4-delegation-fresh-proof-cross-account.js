@@ -50,7 +50,8 @@ describe("Echo V4 delegation: verified fresh proof cannot cross account boundary
       await tx.wait();
     }, err => {
       const data = err.data || err.info?.error?.data;
-      if (data) assert.equal(String(data).slice(0, 10).toLowerCase(),
+      assert.equal(typeof data, "string", "Expected explicit contract revert data");
+      assert.equal(String(data).slice(0, 10).toLowerCase(),
         account.interface.getError("InvalidDelegationIntent").selector.toLowerCase());
       return true;
     });
