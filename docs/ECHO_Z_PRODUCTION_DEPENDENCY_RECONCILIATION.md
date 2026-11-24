@@ -1,0 +1,9 @@
+# Production dependency reconciliation
+
+Draft release inventory correction; no production changes authorized.
+
+At Polygon block 97903160, user-supplied RPC evidence confirms runtime at canonical token, staking and legacy registry addresses. Paymaster and DelegationProxy recorded addresses returned empty runtime. Classify those two as unresolved legacy records, not active verified deployments. Preserve original addresses for receipt reconciliation; do not redeploy automatically.
+
+Source review of EchoSmartAccountZ.sol, EchoAccountFactoryZ.sol and EchoAuthorizationBridgeV4.sol on the security branch: Z inherits EchoSmartAccountV4, binds agent policy registry through its factory, requires reviewed staking target approval and references checkpoint and geographic registries through authorization infrastructure. Factory deployment authorization binds owner, entryPoint, bridge, agent policy registry, salt, configuration hash and deadline. V4 bridge has immutable dualProofVerifier and checkpointRegistry. None of these three files directly imports or references the legacy Paymaster or DelegationProxy. This is a direct dependency review, not exhaustive transitive or off-chain integration proof.
+
+Release inventory must separately track canonical Polygon token/staking/legacy registry, unresolved legacy addresses, Amoy V3/V4 infrastructure, and proposed Z production components. Do not substitute the legacy registry for the V3 checkpoint registry. EntryPoint compatibility, gas sponsorship, complete transitive dependency review, deployment receipts, exact runtime and configured authority remain release gates. Staking registry/oracle are zero at snapshot; do not set either without reviewed policy and explicit authorization. No mainnet deployment, funding, merge or administrative transaction.
