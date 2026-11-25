@@ -523,14 +523,15 @@ contract EchoSmartAccountZ is EchoSmartAccountV4 {
         // monitor. Permit only the monitored token's direct transfer and
         // the separately postcondition-checked atomic staking route.
         address monitored = monitoredToken[delegatee];
-        if (value != 0 || data.length != 36 || monitored == address(0)) {
+        if (value != 0 || data.length < 4 || monitored == address(0)) {
             revert Unauthorized();
         }
 
         bytes4 operation = bytes4(data[:4]);
         bool monitoredTransfer =
-            target == monitored && operation == 0xa9059cbb;
+            target == monitored && operation == 0xa9059cbb && data.length == 68;
         bool atomicStake =
+            data.length == 36 &&
             operation == bytes4(keccak256("stake(uint256)")) &&
             target.code.length != 0 &&
             target == trustedStakingTarget[delegatee] &&
