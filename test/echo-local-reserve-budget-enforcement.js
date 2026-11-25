@@ -1,0 +1,42 @@
+const assert = require("node:assert/strict");
+const { ethers } = require("hardhat");
+describe("Echo reserve Solidity fixture enforcement", function () {
+  it("protects principal, rejects outsiders and independently caps treasury spending", async function () {
+    const [authority, recipient, outsider] = await ethers.getSigners();
+    const token = await (await ethers.getContractFactory("EchoVestingTestToken")).deploy();
+    await token.waitForDeployment();
+    const factory = await ethers.getContractFactory("EchoReserveBudgetFixture");
+    const principal = ethers.parseEther("1000");
+    const cap = ethers.parseEther("20000000");
+    const rewards = await factory.deploy(token.target, authority.address, principal);
+    const treasury = await factory.deploy(token.target, authority.address, 0n);
+    await rewards.waitForDeployment();
+    await treasury.waitForDeployment();
+    await (await token.mint(rewards.target, principal + cap)).wait();
+    await (await token.mint(treasury.target, cap + 1n)).wait();
+    await assert.rejects(async()=>{await (await rewards.connect(outsider).pay(recipient.address,1n)).wait();});
+    await assert.rejects(async()=>{await (await treasury.connect(outsider).pay(recipient.address,1n)).wait();});
+    await (await rewards.pay(recipient.address,cap)).wait();
+    assert.equal(await token.balanceOf(rewards.target),principal);
+    assert.equal(await rewards.spent(),cap);
+    assert.equal(await treasury.spent(),0n);
+    await assert.rejects(async()=>{await (await rewards.pay(recipient.address,1n)).wait();});
+    await (await treasury.pay(recipient.address,cap)).wait();
+    await assert.rejects(async()=>{await (await treasury.pay(recipient.address,1n)).wait();});
+    assert.equal(await token.balanceOf(treasury.target),1n);
+    assert.equal(await token.balanceOf(recipient.address),2n*cap);
+  });
+  it("rejects payments that would consume principal even below the cap", async function () {
+    const [authority,recipient] = await ethers.getSigners();
+    const token = await (await ethers.getContractFactory("EchoVestingTestToken")).deploy();
+    await token.waitForDeployment();
+    const principal=ethers.parseEther("1000");
+    const reserve=await (await ethers.getContractFactory("EchoReserveBudgetFixture")).deploy(token.target,authority.address,principal);
+    await reserve.waitForDeployment();
+    await (await token.mint(reserve.target,principal+10n)).wait();
+    await assert.rejects(async()=>{await (await reserve.pay(recipient.address,11n)).wait();});
+    assert.equal(await reserve.spent(),0n);
+    await (await reserve.pay(recipient.address,10n)).wait();
+    assert.equal(await token.balanceOf(reserve.target),principal);
+  });
+});

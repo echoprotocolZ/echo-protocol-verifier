@@ -39,12 +39,12 @@ The allocation plan uses the designated ECHO contract's 100,000,000-unit supply.
 
 ## Phase 2: founder vesting decision
 
-Approved working combined founder pool: 20,000,000 ECHO (10,000,000 ECHO per founder). **Approved working vesting schedule:** 12-month cliff followed by 36 monthly releases after the cliff; total duration 48 months. This approves the schedule concept only, not a grant, beneficiary, funding, start date, or contract deployment.
+Approved working combined founder pool: 20,000,000 ECHO (10,000,000 ECHO per founder). **Approved working vesting schedule:** 48-month vesting with a 12-month cliff: 25% unlocks at month 12, followed by 36 monthly releases of the remaining 75%. This approves the schedule concept only, not a grant, beneficiary, funding, start date, or contract deployment.
 
 Required choices:
 1. Equal 10M/10M founder split approved as a working allocation; verify beneficiary identities and wallets before any assignment.
-2. Confirm start timestamp (no automatic backdating) and exact definition of a month (calendar dates or fixed seconds).
-3. Define cliff behavior: zero unlock before cliff; whether first installment unlocks at month 13 or a tranche unlocks at the 12-month cliff.
+2. Confirm start timestamp (no automatic backdating). Working acceptance model uses UTC calendar months anchored to the original day, clamped to the last valid day; confirm before production.
+3. Approved cliff behavior: zero before month 12; 2,500,000 ECHO per founder at month 12, 5,000,000 at month 24, 7,500,000 at month 36, and 10,000,000 at month 48. Cumulative vested base units at month m (12 through 48) = floor(grantBaseUnits * m / 48); final release is exact.
 4. Define revocation rights, resignation/termination, death/inheritance, transferability, and emergency recovery.
 5. Confirm funding source and whether tokens are escrowed upfront, and custody/audit policy.
 6. Approve independent audit of any vesting implementation before funding.
@@ -62,7 +62,7 @@ Required choices:
 
 ## Phase 3: release gate
 
-- [ ] Confirm beneficiary wallets and remaining vesting implementation terms in writing (10M/10M split and 12-month cliff + 36 monthly releases approved as working plan).
+- [ ] Confirm beneficiary wallets and remaining vesting implementation terms in writing (10M/10M split and 25% at 12-month cliff + 36 monthly releases approved as working plan).
 - [ ] Complete on-chain token and holder reconciliation.
 - [ ] Obtain relevant legal/tax and independent smart-contract security review.
 - [ ] Verify production source-to-bytecode equivalence for all contracts relied on.

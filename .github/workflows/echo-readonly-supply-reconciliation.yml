@@ -1,0 +1,45 @@
+name: Echo read-only supply reconciliation
+on:
+  push:
+    branches: [security/local-rollback-fence-regression-2026-11-20]
+    paths: [.github/workflows/echo-readonly-supply-reconciliation.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read Polygon state at one block
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          endpoints = ["https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org", "https://polygon-rpc.com"]
+          def rpc(url, method, params):
+              req = urllib.request.Request(url, data=json.dumps({"jsonrpc":"2.0","id":1,"method":method,"params":params}).encode(), headers={"Content-Type":"application/json","User-Agent":"EchoReadOnlyAudit/1.0"})
+              with urllib.request.urlopen(req, timeout=15) as response:
+                  result = json.load(response)
+              if "error" in result: raise RuntimeError(str(result["error"]))
+              return result["result"]
+          for url in endpoints:
+              try:
+                  assert int(rpc(url,"eth_chainId",[]),16)==137
+                  block = rpc(url,"eth_getBlockByNumber",["finalized",False])
+                  tag = block["number"]
+                  report = {"chain":137,"block":int(tag,16),"blockHash":block["hash"],"tokens":[]}
+                  for label,address in [("official","0x9511Ee84398B8Deb725d8967c16693C96C43e0eD"),("reported_duplicate","0x5C2933c98a871F14329E028e22AE39Eb7A70A6Cc")]:
+                      def call(data): return rpc(url,"eth_call",[{"to":address,"data":data},tag])
+                      code=rpc(url,"eth_getCode",[address,tag])
+                      assert code != "0x"
+                      owner=call("0x8da5cb5b")
+                      report["tokens"].append({"label":label,"address":address,"decimals":int(call("0x313ce567"),16),"supplyBaseUnits":str(int(call("0x18160ddd"),16)),"owner":"0x"+owner[-40:],"runtimeBytes":(len(code)-2)//2,"runtimeKeccak":rpc(url,"web3_sha3",[code]),"knownWalletBalanceBaseUnits":str(int(call("0x70a08231"+"10fa94fbfd8eb1b8086b10e6ef7a141a11f231df".rjust(64,"0")),16))})
+                  assert rpc(url,"eth_getBlockByNumber",[tag,False])["hash"]==block["hash"]
+                  print(json.dumps(report,indent=2))
+                  break
+              except Exception as exc:
+                  print("Provider failed:",url,str(exc))
+          else:
+              raise SystemExit("No provider returned complete evidence")
+          PY

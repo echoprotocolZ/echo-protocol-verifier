@@ -9,7 +9,8 @@ const snarkjs = require("snarkjs");
 describe("Echo V4 delegation: verified fresh proof cannot cross account boundary", function () {
   it("rejects old Amoy proofs on a fresh candidate without consuming authorization", async function () {
     const dir = "build/v4-geographic-bound/proofs";
-    const prefix = "fresh-1794741142-nonce-1";
+    const prefix = process.env.ECHO_HISTORICAL_PROOF_PREFIX || "fresh-1794738331-nonce-1";
+    assert.match(prefix, /^fresh-\d+-nonce-1$/);
     const names = [
       prefix + "-signed-checkpoint.json",
       prefix + "-v3-proof.json",
@@ -30,8 +31,35 @@ describe("Echo V4 delegation: verified fresh proof cannot cross account boundary
     const [owner, delegatee] = await ethers.getSigners();
     const registry = await (await ethers.getContractFactory("EchoAttestationRegistryV3")).deploy();
     const verifier = await (await ethers.getContractFactory("EchoAuthorizationVerifierV3")).deploy();
+    assert.equal(await verifier.verifyProof(v3A, v3B, v3C, v3Signals), true, "V3 proof must be genuine");
     const v3Bridge = await (await ethers.getContractFactory("EchoAuthorizationBridgeV3")).deploy(verifier.target, registry.target);
     const geoVerifier = await (await ethers.getContractFactory("EchoGeographicBoundVerifierV4")).deploy();
+    assert.equal(await geoVerifier.verifyProof(v4A, v4B, v4C, v4Signals), true, "V4 proof must be genuine");
+    assert.equal(BigInt(v3Signals[18]), BigInt(v4Signals[4]));
+    assert.equal(BigInt(v3Signals[3]), BigInt(signed.checkpoint.account));
+    assert.equal(BigInt(v3Signals[4]), BigInt(signed.checkpoint.delegatee));
+    assert.equal(BigInt(v3Signals[1]), BigInt(signed.checkpoint.authorizationCommitment));
+    assert.equal(BigInt(v3Signals[18]), BigInt(signed.checkpoint.checkpointCommitment));
+    assert.equal(BigInt(v3Signals[19]), BigInt(signed.checkpoint.timestamp));
+    assert.equal(BigInt(v3Signals[11]), BigInt(signed.checkpoint.nonce));
+    assert.equal(BigInt(v3Signals[11]), 1n);
+    // Historical Amoy signature: never substitute the local registry domain.
+    assert.equal(BigInt(v3Signals[5]) > 0n, true);
+    const domain = {
+      name: "EchoAttestationRegistryV3", version: "1",
+      chainId: 80002, verifyingContract: "0xbC1992863D95B916aA1CFe9140Bc901BEe3E43ca"
+    };
+    const types = { SignedCheckpoint: [
+      { name: "account", type: "address" },
+      { name: "delegatee", type: "address" },
+      { name: "zoneHash", type: "bytes32" },
+      { name: "checkpointCommitment", type: "bytes32" },
+      { name: "authorizationCommitment", type: "bytes32" },
+      { name: "timestamp", type: "uint64" },
+      { name: "nonce", type: "uint256" }
+    ] };
+    const recovered = ethers.verifyTypedData(domain, types, signed.checkpoint, signed.signature);
+    assert.equal(BigInt(recovered), BigInt(v3Signals[5]), "Historical signature must match proof validator");
     const geoPolicy = await (await ethers.getContractFactory("EchoGeographicPolicyRegistryV4")).deploy();
     const gateway = await (await ethers.getContractFactory("EchoGeographicProofGatewayV4")).deploy(geoVerifier.target, geoPolicy.target);
     const dual = await (await ethers.getContractFactory("EchoDualProofVerifierV4")).deploy(v3Bridge.target, gateway.target);
@@ -50,7 +78,8 @@ describe("Echo V4 delegation: verified fresh proof cannot cross account boundary
       await tx.wait();
     }, err => {
       const data = err.data || err.info?.error?.data;
-      if (data) assert.equal(String(data).slice(0, 10).toLowerCase(),
+      assert.equal(typeof data, "string", "Expected explicit contract revert data");
+      assert.equal(String(data).slice(0, 10).toLowerCase(),
         account.interface.getError("InvalidDelegationIntent").selector.toLowerCase());
       return true;
     });

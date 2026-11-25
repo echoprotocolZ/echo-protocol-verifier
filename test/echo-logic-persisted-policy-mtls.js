@@ -67,9 +67,12 @@ describe("Echo Logic persisted signed policy live mTLS integration",function(){
  });
  it("fails closed if the signed policy expires during live connections",async()=>{
   await start();
-  const now=Date.now();
-  store.apply(signPolicy({version:1,sequence:++seq,issuedAt:now-1000,expiresAt:now+20,revokedFingerprints:[]},keys.privateKey));
-  await new Promise(resolve=>setTimeout(resolve,45));
+  // Use a controlled clock: real-time 20ms expiry can elapse during
+  // synchronous persistence on a busy CI runner before apply() completes.
+  let now=Date.now();
+  store=openPersistentRevocationStore(keys.publicKey,path.join(dir,"policy"),{clock:()=>now});
+  store.apply(signPolicy({version:1,sequence:++seq,issuedAt:now-1000,expiresAt:now+60000,revokedFingerprints:[]},keys.privateKey));
+  now+=60001;
   await assert.rejects(()=>send());
   assert.equal(relay.messages.length,0);
  });
