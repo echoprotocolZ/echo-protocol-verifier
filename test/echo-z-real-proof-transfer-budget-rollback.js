@@ -174,5 +174,41 @@ describe("Echo Z — real dual-Groth16 monitored transfer", function () {
     assert.equal(await token.balanceOf(address), amount);
     assert.equal(await token.balanceOf(recipient), initialRecipient + amount);
     assert.equal(await account.tokenSpendingUsed(agent.address, token.target), amount);
+
+    // Even owner-approved, correctly bound proofs cannot loosen a budget.
+    const otherToken = await deploy("EchoTokenTestMock");
+    const expectedError = account.interface.encodeErrorResult("ExecutionFailed", [
+      account.interface.encodeErrorResult("InvalidSpendingBudget", [])
+    ]);
+    for (const [candidateToken, candidateBudget] of [
+      [token.target, amount + 1n],
+      [token.target, amount - 1n],
+      [otherToken.target, amount]
+    ]) {
+      const update = account.interface.encodeFunctionData("setTokenSpendingBudget",
+        [agent.address, candidateToken, candidateBudget]);
+      const p = await proof(address, update);
+      const params = [p.checkpoint, p.signature, proofStruct(p), candidateToken, candidateBudget];
+      const nonceBeforeUpdate = await account.nonce();
+      await assert.rejects(async () => {
+        await account.executeProofAuthorizedSpendingBudgetUpdate.staticCall(...params);
+      }, e => {
+        assert.equal(e.data, expectedError);
+        return true;
+      });
+      await assert.rejects(async () => {
+        await (await account.executeProofAuthorizedSpendingBudgetUpdate(
+          ...params, {gasLimit: 8000000}
+        )).wait();
+      });
+      assert.equal(await account.nonce(), nonceBeforeUpdate);
+      assert.equal(await bridge.consumedNullifiers(p.nullifier), false);
+      assert.equal(await account.monitoredToken(agent.address), token.target);
+      assert.equal(await account.tokenSpendingBudgets(agent.address, token.target), amount);
+      assert.equal(await account.tokenSpendingUsed(agent.address, token.target), amount);
+      assert.equal(await account.tokenSpendingBudgetConfigured(agent.address, otherToken.target), false);
+      assert.equal(await token.balanceOf(address), amount);
+      assert.equal(await token.balanceOf(recipient), initialRecipient + amount);
+    }
   });
 });
