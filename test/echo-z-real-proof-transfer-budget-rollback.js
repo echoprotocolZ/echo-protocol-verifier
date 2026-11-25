@@ -134,5 +134,45 @@ describe("Echo Z — real dual-Groth16 monitored transfer", function () {
     assert.equal(await token.balanceOf(recipient), initialRecipient + amount);
     assert.equal(await account.tokenSpendingUsed(agent.address, token.target), amount);
     assert.equal(await bridge.consumedNullifiers(excess.p.nullifier), false);
+
+    // Permission lifecycle must never replenish the cumulative budget.
+    await policyUpdate(agentPolicies.interface.encodeFunctionData(
+      "setAgentPolicy", [agent.address, 0n, expiry, false]
+    ));
+    assert.equal((await agentPolicies.agentPolicies(address, agent.address)).enabled, false);
+    const disabled = await args(token.interface.encodeFunctionData("transfer", [recipient, 1n]));
+    const disabledNonce = await account.nonce();
+    await assert.rejects(async () => {
+      await account.executeAuthorized.staticCall(...disabled.values);
+    }, e => {
+      assert.equal(e.data, account.interface.getError("Unauthorized").selector);
+      return true;
+    });
+    assert.equal(await account.nonce(), disabledNonce);
+    assert.equal(await bridge.consumedNullifiers(disabled.p.nullifier), false);
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), amount);
+
+    await policyUpdate(agentPolicies.interface.encodeFunctionData(
+      "setAgentPolicy", [agent.address, 0n, expiry, true]
+    ));
+    assert.equal((await agentPolicies.agentPolicies(address, agent.address)).enabled, true);
+    assert.equal(await account.tokenSpendingBudgets(agent.address, token.target), amount);
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), amount);
+    const renewed = await args(token.interface.encodeFunctionData("transfer", [recipient, 1n]));
+    const renewedNonce = await account.nonce();
+    await assert.rejects(async () => {
+      await account.executeAuthorized.staticCall(...renewed.values);
+    }, e => {
+      assert.equal(e.data, account.interface.getError("SpendingBudgetExceeded").selector);
+      return true;
+    });
+    await assert.rejects(async () => {
+      await (await account.executeAuthorized(...renewed.values, {gasLimit: 8000000})).wait();
+    });
+    assert.equal(await account.nonce(), renewedNonce);
+    assert.equal(await bridge.consumedNullifiers(renewed.p.nullifier), false);
+    assert.equal(await token.balanceOf(address), amount);
+    assert.equal(await token.balanceOf(recipient), initialRecipient + amount);
+    assert.equal(await account.tokenSpendingUsed(agent.address, token.target), amount);
   });
 });
